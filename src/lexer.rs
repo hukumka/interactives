@@ -243,7 +243,7 @@ fn is_bracket(c: char)->bool{
 }
 
 fn is_operator(c: char)->bool{
-    "=+-*/%&|!^<>,.".contains(c)
+    "=+-*/%&|!^<>,.;".contains(c)
 }
 
 

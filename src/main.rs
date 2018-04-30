@@ -1,6 +1,6 @@
 mod error;
 mod lexer;
-mod parser;
+mod bracket_tree;
 
 
 fn main() {
