@@ -82,7 +82,7 @@ impl<'a> BracketTree<'a>{
 }
 
 #[derive(Clone)]
-struct BracketTreeWalker<'a>{
+pub struct BracketTreeWalker<'a>{
     pos: usize,
     end: usize,
     tree: &'a BracketTree<'a>

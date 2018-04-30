@@ -220,7 +220,7 @@ impl<'a> Preprocessor<'a>{
                     end_pos = pos;
                     prev_char = c;
                 },
-                Some((pos, c)) => {
+                Some((pos, _)) => {
                     return (start_pos, pos);
                 },
                 None => {
