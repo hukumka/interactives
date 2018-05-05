@@ -66,7 +66,7 @@ impl<'a> TokenData<'a>{
 
 impl<'a> fmt::Debug for TokenData<'a>{
     fn fmt(&self, f: &mut fmt::Formatter)->Result<(), fmt::Error>{
-        write!(f, "TokenData(Type: {}, text: \"{}\", range: {:?}))", self.type_.as_str(), self.token_str(), self.interval)
+        write!(f, "TokenData(Type: {}, text: \"{}\", interval: {:?})", self.type_.as_str(), self.token_str(), self.interval)
     }
 }
 
@@ -137,7 +137,7 @@ impl<'a> Preprocessor<'a>{
                         char_iter.next().unwrap();
                         continue;
                     }else{
-                        Err(self.error(ERROR_UNKNOWN_TOKEN_TYPE, (pos, pos+f.len_utf8())))
+                        Err(self.error(ERROR_UNKNOWN_TOKEN_TYPE, pos))
                     }
                 );
             }else{
@@ -200,7 +200,7 @@ impl<'a> Preprocessor<'a>{
                 return Ok(TokenData::new(self.code_text, (start_pos, pos + char_.len_utf8()), TokenType::Value));
             }
         }
-        return Err(self.error(ERROR_UNCLOSED_STRING, (start_pos, start_pos)));
+        return Err(self.error(ERROR_UNCLOSED_STRING, start_pos));
     }
 
     /// Returns largest interval from start, on which every character match filter, and shift
@@ -224,7 +224,6 @@ impl<'a> Preprocessor<'a>{
                     return (start_pos, pos);
                 },
                 None => {
-                    println!("{}", prev_char);
                     return (start_pos, end_pos + prev_char.len_utf8());
                 }
             }
@@ -232,7 +231,7 @@ impl<'a> Preprocessor<'a>{
     }
 
     /// Returns error of give error_code and its position in text
-    fn error(&self, code: usize, where_: (usize, usize))->Error<'a>{
+    fn error(&self, code: usize, where_: usize)->Error<'a>{
         Error::new(self.code_text, code, where_)
     }
 }
