@@ -125,10 +125,6 @@ impl<'a> Preprocessor<'a>{
                 return Some(
                     if f.is_alphabetic() || f == '_' { 
                         self.eat_name(char_iter) 
-                    }else if is_operator(f){
-                        self.eat_operator(char_iter)  
-                    }else if is_bracket(f){
-                        self.eat_bracket(char_iter)
                     }else if f.is_digit(10) || f == '.'{
                         self.eat_numeric(char_iter)
                     }else if f == '"'{
@@ -136,6 +132,10 @@ impl<'a> Preprocessor<'a>{
                     }else if f == ' ' || f == '\n'{
                         char_iter.next().unwrap();
                         continue;
+                    }else if is_bracket(f){
+                        self.eat_bracket(char_iter)
+                    }else if is_operator(f){
+                        self.eat_operator(char_iter)  
                     }else{
                         Err(self.error(ERROR_UNKNOWN_TOKEN_TYPE, pos))
                     }
@@ -318,5 +318,14 @@ mod tests{
             ("Name", "b", (31, 32)),
             ("Bracket", ")", (32, 33)),
         ]);
+    }
+
+    use test::Bencher;
+    #[bench]
+    fn bench_tokenize(bench: &mut Bencher){
+        let preprocessor = Preprocessor::new("int x=0; int x(int a){return a + 4; for(int i=0; i<a; ++i) a += 3 * 4;}");
+        bench.iter(||{
+            let data = preprocessor.tokenize();
+        });
     }
 }

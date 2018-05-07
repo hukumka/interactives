@@ -33,30 +33,30 @@ pub enum Root<'a>{
 
 #[derive(Debug)]
 pub struct FunctionDefinition<'a>{
-    return_type: Type<'a>,
-    arguments: Vec<Variable<'a>>,
-    name: &'a TokenData<'a>,
-    body: Block<'a>
+    pub return_type: Type<'a>,
+    pub arguments: Vec<Variable<'a>>,
+    pub name: &'a TokenData<'a>,
+    pub body: Block<'a>
 }
 
 
 #[derive(Debug)]
 pub struct Variable<'a>{
-    type_: Type<'a>,
-    name: &'a TokenData<'a>
+    pub type_: Type<'a>,
+    pub name: &'a TokenData<'a>
 }
 
 
 #[derive(Debug)]
 pub struct Type<'a>{
-    base: &'a TokenData<'a>,
-    pointer_count: usize
+    pub base: &'a TokenData<'a>,
+    pub pointer_count: usize
 }
 
 
 #[derive(Debug)]
 pub struct Block<'a>{
-    statements: Vec<Statement<'a>>
+    pub statements: Vec<Statement<'a>>
 }
 
 
@@ -72,8 +72,8 @@ pub enum Statement<'a>{
 
 #[derive(Debug)]
 pub struct VariableDefinition<'a>{
-    variable: Variable<'a>,
-    set_to: Expression<'a>
+    pub variable: Variable<'a>,
+    pub set_to: Expression<'a>
 }
 
 
@@ -94,18 +94,18 @@ pub enum ExpressionData<'a>{
 
 #[derive(Debug)]
 pub struct Condition<'a>{
-    condition: Expression<'a>,
-    then: Block<'a>,
-    else_: Option<Block<'a>>
+    pub condition: Expression<'a>,
+    pub then: Block<'a>,
+    pub else_: Option<Block<'a>>
 }
 
 
 #[derive(Debug)]
 pub struct ForLoop<'a>{
-    init: ForLoopInitialization<'a>,
-    step: Expression<'a>,
-    condition: Expression<'a>,
-    body: Block<'a>
+    pub init: ForLoopInitialization<'a>,
+    pub step: Expression<'a>,
+    pub condition: Expression<'a>,
+    pub body: Block<'a>
 }
 
 
@@ -118,37 +118,37 @@ pub enum ForLoopInitialization<'a>{
 
 #[derive(Debug)]
 pub struct FunctionCall<'a>{
-    name: &'a TokenData<'a>,
-    arguments: Vec<Expression<'a>>
+    pub name: &'a TokenData<'a>,
+    pub arguments: Vec<Expression<'a>>
 }
 
 
 #[derive(Debug)]
 pub struct Index<'a>{
-    expr: Expression<'a>,
-    index: Expression<'a>
+    pub expr: Expression<'a>,
+    pub index: Expression<'a>
 }
 
 
 #[derive(Debug)]
 pub struct BinaryOperator<'a>{
-    operator: &'a TokenData<'a>,
-    left: Expression<'a>,
-    right: Expression<'a>
+    pub operator: &'a TokenData<'a>,
+    pub left: Expression<'a>,
+    pub right: Expression<'a>
 }
 
 
 #[derive(Debug)]
 pub struct PrefixOperator<'a>{
-    operator: &'a TokenData<'a>,
-    right: Expression<'a>
+    pub operator: &'a TokenData<'a>,
+    pub right: Expression<'a>
 }
 
 
 #[derive(Debug)]
 pub struct SyffixOperator<'a>{
-    operator: &'a TokenData<'a>,
-    left: Expression<'a>
+    pub operator: &'a TokenData<'a>,
+    pub left: Expression<'a>
 }
 
 pub trait Parseable<'a>: Sized{
@@ -1095,5 +1095,17 @@ mod tests{
         assert!(fn_def.body.statements.is_empty());
 
         assert!(walker.is_empty());
+    }
+
+
+    use test::Bencher;
+    #[bench]
+    fn bench_parse(bench: &mut Bencher){
+        new_walker!{let mut walker = "int x=0; int x(int a){return a + 4; for(int i=0; i<a; ++i) a += 3 * 4;}";}
+        let mut error_stream = vec![];
+        bench.iter(||{
+            let mut walker = walker.clone();
+            let r1 = Root::parse(&mut walker, &mut error_stream).unwrap();
+        });
     }
 }

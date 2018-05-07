@@ -339,5 +339,14 @@ mod tests{
         assert!(walker.is_empty());
     }
 
+    use test::Bencher;
+    #[bench]
+    fn bench_bracket_tree(bench: &mut Bencher){
+        let preprocessor = Preprocessor::new("int x=0; int x(int a){return a + 4; for(int i=0; i<a; ++i) a += 3 * 4;}");
+        let data = preprocessor.tokenize().unwrap();
+        bench.iter(||{
+            let tree = BracketTree::new(&data).unwrap();
+        });
+    }
 
 }
