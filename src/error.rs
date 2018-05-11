@@ -31,8 +31,12 @@ pub mod syntax_tree_parser{
 	pub const ERROR_PARSING_VARDEF_EXPECT_SEMICOLON: usize = 0x0212;
 }
 
+pub mod precompiler{
+    pub const ERROR_PRECMP_VARIABLE_REDEFINITION: usize = 0x0300;
+}
 
-/// Struct used 
+
+/// Struct used
 #[derive(Debug)]
 pub struct Error<'a>{
     text: &'a str,
@@ -54,4 +58,3 @@ impl<'a> Error<'a>{
         self.code_
     }
 }
-
