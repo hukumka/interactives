@@ -1,10 +1,6 @@
 use lexer::{TokenData, TokenType};
-use error::{
-Error,
-ERROR_BRACKET_DONT_MATCH,
-ERROR_UNCLOSED_BRACKET,
-ERROR_TO_MANY_CLOSING_BRACKETS
-};
+use error::Error;
+use error::bracket_tree_parser::*;
 
 
 pub struct BracketTree<'a>{
@@ -345,7 +341,7 @@ mod tests{
         let preprocessor = Preprocessor::new("int x=0; int x(int a){return a + 4; for(int i=0; i<a; ++i) a += 3 * 4;}");
         let data = preprocessor.tokenize().unwrap();
         bench.iter(||{
-            let tree = BracketTree::new(&data).unwrap();
+            let _tree = BracketTree::new(&data).unwrap();
         });
     }
 

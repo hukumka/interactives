@@ -9,7 +9,6 @@ mod error;
 mod lexer;
 mod bracket_tree;
 mod syntax_tree;
-mod precompile;
 
 
 fn main() {

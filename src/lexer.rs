@@ -2,12 +2,8 @@ use std::fmt;
 use std::iter::Peekable;
 use std::str::CharIndices;
 
-
-use error::{
-    Error,
-    ERROR_UNKNOWN_TOKEN_TYPE,
-    ERROR_UNCLOSED_STRING,
-};
+use error::Error;
+use error::lexer::*;
 
 
 /// Struct used to hold information about token type
@@ -61,6 +57,10 @@ impl<'a> TokenData<'a>{
 
     pub fn get_interval(&self)->(usize, usize){
         self.interval
+    }
+
+    pub fn get_pos(&self)->usize{
+        self.interval.0
     }
 }
 
@@ -325,7 +325,7 @@ mod tests{
     fn bench_tokenize(bench: &mut Bencher){
         let preprocessor = Preprocessor::new("int x=0; int x(int a){return a + 4; for(int i=0; i<a; ++i) a += 3 * 4;}");
         bench.iter(||{
-            let data = preprocessor.tokenize();
+            let _data = preprocessor.tokenize();
         });
     }
 }

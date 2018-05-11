@@ -1,27 +1,7 @@
 use lexer::TokenData;
 use bracket_tree::BracketTreeWalker;
 use error::Error;
-use error::{
-    ERROR_PARSING_ROOT_EXPECT_ROOT,
-    ERROR_PARSING_ROOT_EXPECT_NAME,
-    ERROR_PARSING_ROOT_EXPECT_SEMICOLON,
-    ERROR_PARSING_TYPE_EXPECT_NAME,
-    ERROR_PARSING_FUNC_EXPECT_BODY,
-    ERROR_PARSING_FUNC_ARGS_EXPECT_NAME,
-    ERROR_PARSING_FUNC_ARGS_EXPECT_COMA,
-    ERROR_PARSING_COND_EXPECT_CONDITION,
-    ERROR_PARSING_COND_EXPECT_CONDITION_END,
-    ERROR_PARSING_FOR_EXPECT_INIT,
-    ERROR_PARSING_FOR_EXPECT_VARDEF,
-    ERROR_PARSING_FOR_EXPECT_SEMICOLON,
-    ERROR_PARSING_FOR_EXPECT_CLOSE,
-    ERROR_PARSING_EXPR_EXPECTED_COMA,
-    ERROR_PARSING_EXPR_EXPECTED_NAME_OR_VALUE,
-    ERROR_PARSING_EXPR_EXPECTED_SBRACKET,
-    ERROR_PARSING_EXPR_EXPECTED_BRACKET,
-    ERROR_PARSING_STATEMENT_EXPECT_SEMICOLON,
-    ERROR_PARSING_VARDEF_EXPECT_SEMICOLON,
-};
+use error::syntax_tree_parser::*;
 
 
 #[derive(Debug)]
@@ -53,6 +33,12 @@ pub struct Type<'a>{
     pub pointer_count: usize
 }
 
+impl<'a> Type<'a>{
+    fn is(&self, base: &str, pointer_count: usize)->bool{
+        self.base.token_str() == base && self.pointer_count == pointer_count
+    }
+}
+
 
 #[derive(Debug)]
 pub struct Block<'a>{
@@ -74,6 +60,12 @@ pub enum Statement<'a>{
 pub struct VariableDefinition<'a>{
     pub variable: Variable<'a>,
     pub set_to: Expression<'a>
+}
+
+impl<'a> VariableDefinition<'a>{
+    pub fn name(&self)->&TokenData<'a>{
+        &self.variable.name
+    }
 }
 
 
@@ -1105,7 +1097,7 @@ mod tests{
         let mut error_stream = vec![];
         bench.iter(||{
             let mut walker = walker.clone();
-            let r1 = Root::parse(&mut walker, &mut error_stream).unwrap();
+            let _r1 = Root::parse(&mut walker, &mut error_stream).unwrap();
         });
     }
 }
