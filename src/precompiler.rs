@@ -11,6 +11,7 @@ use syntax_tree::{
     Statement,
     Condition,
     ForLoop,
+    ForLoopInitialization,
     Expression,
     ExpressionData,
     Index,
@@ -38,14 +39,14 @@ impl<'a> NamespaceStack<'a>{
         Self{globals, locals: vec![]}
     }
 
-    fn register(&self, var: &'a Variable<'a>, error_stream: &mut Vec<Error<'a>>)->Option<()>{
+    fn register(&mut self, var: &'a Variable<'a>, error_stream: &mut Vec<Error<'a>>)->Option<()>{
         self.locals.first_mut().and_then(|mut x| x.register(var, error_stream))
     }
 
     /// get data about variable and its id for execution
     fn get_id(&self, name: &'a str)->Option<usize>{
         for i in (0..self.locals.len()).rev(){
-            let namespace = self.locals[i];
+            let namespace = &self.locals[i];
             if let Some(id) = namespace.get(name){
                 let id = id + self.globals.len()
                     + self.locals[..i].iter().map(|x| x.len()).sum::<usize>();
@@ -62,7 +63,7 @@ impl<'a> NamespaceStack<'a>{
             Some(self.globals.get_tree(id))
         }else{
             id -= self.globals.len();
-            for n in self.locals{
+            for n in &self.locals{
                 if id < n.len(){
                     return Some(n.get_tree(id));
                 }else{
@@ -158,7 +159,7 @@ struct FunctionType<'a>{
 
 impl<'a> Type<'a>{
     fn from_syntax_type(type_: &'a SyntaxType<'a>)->Self{
-        let mut base = type_.base.token_str();
+        let base = type_.base.token_str();
         let pointer_count = type_.pointer_count;
         Self{base, pointer_count, is_reference: false}
     }
@@ -216,7 +217,7 @@ struct FunctionManager<'a>{
 
 impl<'a> FunctionManager<'a>{
     fn from_tree(tree: &'a [Root<'a>])->Self{
-        let res = FunctionManager{declarations: vec![]};
+        let mut res = FunctionManager{declarations: vec![]};
         for r in tree{
             match r{
                 Root::FunctionDefinition(func) => {
@@ -240,7 +241,7 @@ impl<'a> FunctionManager<'a>{
     }
 
     fn ret_type(&self, id: usize)->Type<'a>{
-        self.declarations[id].1.return_type
+        self.declarations[id].1.return_type.clone()
     }
 }
 
@@ -341,8 +342,8 @@ impl<'a> Precompiler<'a>{
     /// precompile function; returns position at there it starts
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>)->Option<usize>{
         self.namespace_stack.push();
-        for arg in func.arguments{
-            self.namespace_stack.register(&arg, &mut self.error_stream)?;
+        for arg in &func.arguments{
+            self.namespace_stack.register(arg, &mut self.error_stream)?;
         }
         let starting_position = self.operations.len();
         self.compile_block(&func.body)?;
@@ -353,8 +354,8 @@ impl<'a> Precompiler<'a>{
     fn compile_block(&mut self, block: &'a Block<'a>)->Option<usize>{
         let pos = self.operations.len();
         self.namespace_stack.push();
-        for statement in block.statements {
-            self.compile_statement(&statement)?;
+        for statement in &block.statements{
+            self.compile_statement(statement)?;
         }
         self.namespace_stack.pop().unwrap();
         Some(pos)
@@ -371,21 +372,47 @@ impl<'a> Precompiler<'a>{
         }
     }
 
+    /// compile variable definition
+    fn compile_variable_definition(&mut self, var_def: &'a VariableDefinition<'a>)->Option<usize>{
+        self.namespace_stack.register(&var_def.variable, &mut self.error_stream)?;
+        let ref_pos = self.compile_get_variable(&var_def.variable.name)?;
+        let value = self.compile_expression(&var_def.set_to)?;
+        Some(self.push(OperationData{
+            operation: Operation::Set(ref_pos, value),
+            token: var_def.name(),
+            return_type: None
+        }))
+    }
+
+    /// compile for loop
+    fn compile_for_loop(&mut self, loop_: &'a ForLoop<'a>)->Option<usize>{
+        let start = self.operations.len();
+        self.namespace_stack.push();
+        match loop_.init{
+            ForLoopInitialization::Expression(ref e) => {self.compile_expression(e)?;},
+            ForLoopInitialization::VariableDefinition(ref v) => {}
+
+        }
+        self.namespace_stack.pop().unwrap();
+        Some(start)
+    }
+    
     /// compile condition
     fn compile_condition(&mut self, cond: &'a Condition<'a>)->Option<usize>{
         let start = self.operations.len();
         let cond_expr = self.compile_expression(&cond.condition)?;
+        let token = self.operations[cond_expr].token; 
         let jump = self.push(OperationData{
             operation: Operation::JumpIfZero(cond_expr, 0), // jump position set to zero,
             // because if only will be determined after block compilation
-            token: self.operations[cond_expr].token,
+            token,
             return_type: None
         });
         self.compile_block(&cond.then)?;
         let then_end_pos = if let Some(ref block) = cond.else_{
             let jump = self.push(OperationData{
                 operation: Operation::Jump(0),
-                token: self.operations[cond_expr].token,
+                token,
                 return_type: None
             });
             let pos = self.operations.len();
@@ -404,9 +431,10 @@ impl<'a> Precompiler<'a>{
     /// compile return statement
     fn compile_return(&mut self, expr: &'a Expression<'a>)->Option<usize>{
         let val = self.compile_expression(expr)?;
+        let token = self.operations[val].token;
         Some(self.push(OperationData{
             operation: Operation::Return(val),
-            token: self.operations[val].token,
+            token,
             return_type: None
         }))
     }
@@ -461,16 +489,16 @@ impl<'a> Precompiler<'a>{
     fn compile_index(&mut self, index: &'a Index<'a>)->Option<usize>{
         let array = self.compile_expression(&index.expr)?;
         let index = self.compile_expression(&index.index)?;
-        let op = self.operations[array];
-        let return_type = if let Some(type_) = op.return_type.and_then(|x| x.dereference()){
+        let token = self.operations[array].token.clone();
+        let return_type = if let Some(type_) = self.operations[array].return_type.clone().and_then(|x| x.dereference()){
             type_
         }else{
-            self.error(op.token, ERROR_PRECMP_DEREFERENCE_OF_NOT_POINTER);
+            self.error(token, ERROR_PRECMP_DEREFERENCE_OF_NOT_POINTER);
             return None;
         };
         Some(self.push(OperationData{
             operation: Operation::Index(array, index),
-            token: op.token,
+            token,
             return_type: Some(return_type)
         }))
     }
@@ -488,15 +516,17 @@ impl<'a> Precompiler<'a>{
         let mut args_types = vec![];
         for arg in &func.arguments{
             let id = self.compile_expression(arg)?;
+            let token = self.operations[id].token;
             self.push(OperationData{
                 operation: Operation::PushArg(id),
-                token: self.operations[id].token,
+                token,
                 return_type: None
             });
-            if let Some(t) = self.operations[id].return_type{
-                args_types.push(t.clone());
+            if let Some(t) = self.operations[id].return_type.clone(){
+                args_types.push(t);
             }else{
-                self.error(self.operations[id].token, ERROR_PRECMP_TRYING_TO_GET_VOID_VALUE);
+                let token = self.operations[id].token;
+                self.error(token, ERROR_PRECMP_TRYING_TO_GET_VOID_VALUE);
                 return None;
             }
         }
@@ -506,11 +536,12 @@ impl<'a> Precompiler<'a>{
             self.error(func.name, ERROR_PRECMP_NO_FITTING_FUNCTION);
             return None;
         };
-
+        
+        let return_type = Some(self.function_manager.ret_type(call_id)); 
         self.push(OperationData{
             operation: Operation::Call(call_id),
             token: name,
-            return_type: Some(self.function_manager.ret_type(call_id))
+            return_type
         });
 
         None
@@ -521,7 +552,8 @@ impl<'a> Precompiler<'a>{
         let right = self.compile_expression(&operator.right)?;
         let op_token = &operator.operator;
         if self.operations[left].return_type.is_none() || self.operations[right].return_type.is_none(){
-            self.error(self.operations[left].token, ERROR_PRECMP_TRYING_TO_GET_VOID_VALUE);
+            let token = self.operations[left].token;
+            self.error(token, ERROR_PRECMP_TRYING_TO_GET_VOID_VALUE);
             None
         }else{ match op_token.token_str(){
             "+" => self.operator_plus(op_token, left, right),
@@ -540,8 +572,8 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_eq(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize> {
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.can_be_converted(&right_type.to_lvalue()){
             let left = self.compile_convert(left, &right_type.to_lvalue())?;
             Some(self.push(OperationData {
@@ -556,8 +588,8 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_and(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.can_be_converted(&Type::int()) && right_type.can_be_converted(&Type::int()) {
             // int
             let left = self.compile_convert(left, &Type::int())?;
@@ -574,8 +606,8 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_plus(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.can_be_converted(&Type::int()) && right_type.can_be_converted(&Type::int()) {
             // int
             let left = self.compile_convert(left, &Type::int())?;
@@ -608,8 +640,8 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_minus(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.can_be_converted(&Type::int()) && right_type.can_be_converted(&Type::int()) {
             // int
             let left = self.compile_convert(left, &Type::int())?;
@@ -642,8 +674,8 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_multiply(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.can_be_converted(&Type::int()) && right_type.can_be_converted(&Type::int()) {
             // int
             let left = self.compile_convert(left, &Type::int())?;
@@ -660,8 +692,8 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_divide(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.can_be_converted(&Type::int()) && right_type.can_be_converted(&Type::int()) {
             // int
             let left = self.compile_convert(left, &Type::int())?;
@@ -678,8 +710,8 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_modulo(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.can_be_converted(&Type::int()) && right_type.can_be_converted(&Type::int()) {
             // int
             let left = self.compile_convert(left, &Type::int())?;
@@ -696,15 +728,15 @@ impl<'a> Precompiler<'a>{
     }
 
     fn operator_set(&mut self, token: &'a TokenData<'a>, left: usize, right: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
-        let right_type = self.operations[right].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
+        let right_type = self.operations[right].return_type.clone()?;
         if left_type.is_reference && right_type.can_be_converted(&left_type.to_lvalue()) {
             // int
             let right = self.compile_convert(right, &left_type.to_lvalue())?;
             Some(self.push(OperationData {
                 operation: Operation::Set(left, right),
                 token,
-                return_type: Some(left_type.clone())
+                return_type: Some(left_type)
             }))
         }else{
             self.error(token, ERROR_PRECMP_OPERATOR_TYPE_MISMATCH);
@@ -731,7 +763,7 @@ impl<'a> Precompiler<'a>{
     }
 
     fn compile_negative(&mut self, token: &'a TokenData<'a>, val: usize)->Option<usize>{
-        let type_ = self.operations[val].return_type?;
+        let type_ = self.operations[val].return_type.clone()?;
         if type_.can_be_converted(&Type::int()){
             let val = self.compile_convert(val, &Type::int()).unwrap();
             Some(self.push(OperationData {
@@ -746,7 +778,7 @@ impl<'a> Precompiler<'a>{
     }
 
     fn compile_not(&mut self, token: &'a TokenData<'a>, val: usize)->Option<usize>{
-        let type_ = self.operations[val].return_type?;
+        let type_ = self.operations[val].return_type.clone()?;
         if type_.can_be_converted(&Type::int()) || type_.pointer_count > 0{
             let val = self.compile_convert(val, &Type::int()).unwrap();
             Some(self.push(OperationData {
@@ -761,7 +793,7 @@ impl<'a> Precompiler<'a>{
     }
 
     fn compile_dereference(&mut self, token: &'a TokenData<'a>, val: usize)->Option<usize>{
-        let type_ = self.operations[val].return_type?;
+        let type_ = self.operations[val].return_type.clone()?;
         if type_.pointer_count > 0{
             Some(self.push(OperationData{
                 operation: Operation::Deref(val),
@@ -775,7 +807,7 @@ impl<'a> Precompiler<'a>{
     }
 
     fn compile_reference(&mut self, token: &'a TokenData<'a>, val: usize)->Option<usize>{
-        let type_ = self.operations[val].return_type?;
+        let type_ = self.operations[val].return_type.clone()?;
         if type_.is_reference{
             Some(self.push(OperationData{
                 operation: Operation::GetPointer(val),
@@ -808,19 +840,19 @@ impl<'a> Precompiler<'a>{
     }
 
     fn compile_increment(&mut self, token: &'a TokenData<'a>, left: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
         if left_type.is_reference{
             if left_type.pointer_count > 0 {
                 Some(self.push(OperationData {
                     operation: Operation::IncPointer(left),
                     token,
-                    return_type: Some(left_type.clone())
+                    return_type: Some(left_type)
                 }))
             }else if left_type.base == "int"{
                 Some(self.push(OperationData{
                     operation: Operation::IncInt(left),
                     token,
-                    return_type: Some(left_type.clone())
+                    return_type: Some(left_type)
                 }))
             }else{
                 self.error(token, ERROR_PRECMP_OPERATOR_TYPE_MISMATCH);
@@ -833,19 +865,19 @@ impl<'a> Precompiler<'a>{
     }
 
     fn compile_decrement(&mut self, token: &'a TokenData<'a>, left: usize)->Option<usize>{
-        let left_type = self.operations[left].return_type?;
+        let left_type = self.operations[left].return_type.clone()?;
         if left_type.is_reference{
             if left_type.pointer_count > 0 {
                 Some(self.push(OperationData {
                     operation: Operation::DecPointer(left),
                     token,
-                    return_type: Some(left_type.clone())
+                    return_type: Some(left_type)
                 }))
             }else if left_type.base == "int"{
                 Some(self.push(OperationData{
                     operation: Operation::DecInt(left),
                     token,
-                    return_type: Some(left_type.clone())
+                    return_type: Some(left_type)
                 }))
             }else{
                 self.error(token, ERROR_PRECMP_OPERATOR_TYPE_MISMATCH);
@@ -859,12 +891,13 @@ impl<'a> Precompiler<'a>{
 
     /// compile convertion from one type to other
     fn compile_convert(&mut self, value: usize, into: &Type<'a>)->Option<usize>{
-        if let Some(x) = self.operations[value].return_type{
+        if let Some(x) = self.operations[value].return_type.clone(){
             if x.can_be_force_converted(into) && x != *into{
+                let token = self.operations[value].token.clone();
                 Some(self.push(
                     OperationData{
                         operation: Operation::Convert(value),
-                        token: self.operations[value].token,
+                        token,
                         return_type: Some(into.clone())
                     }
                 ))
@@ -888,19 +921,4 @@ impl<'a> Precompiler<'a>{
         let error = Error::new(token.code(), error_code, token.get_pos());
         self.error_stream.push(error);
     }
-}
-
-
-///
-///  (int, int)->int | |x, y| Operation::SumInt(x, y)
-///  (*{T}, int)->*{T} | |x, z| Operation::SumPointer
-///
-///  (*{T}, *{T})->int | |x, z| Operation::DiffPointer
-
-
-trait BinaryOperatorRule<'a>{
-    fn check(left: &Type<'a>, right: &Type<'a>)->bool;
-    fn build(token: &'a TokenData<'a>, left: usize, right: usize)->OperationData<'a>;
-
-
 }
