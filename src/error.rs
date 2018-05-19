@@ -35,7 +35,7 @@ pub mod precompiler{
     pub const ERROR_PRECMP_VARIABLE_REDEFINITION: usize = 0x0300;
     pub const ERROR_PRECMP_UNKNOWN_CONSTANT_TYPE: usize = 0x0301;
     pub const ERROR_PRECMP_UNDEFINED_VARIABLE: usize = 0x0302;
-    pub const ERROR_PRECMP_UNDEFINED_TYPE: usize = 0x0303;
+
     pub const ERROR_PRECMP_DEREFERENCE_OF_NOT_POINTER: usize = 0x0304;
     pub const ERROR_PRECMP_NO_FITTING_FUNCTION: usize = 0x0305;
     pub const ERROR_PRECMP_TRYING_TO_GET_VOID_VALUE: usize = 0x0306;
