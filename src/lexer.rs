@@ -129,7 +129,7 @@ impl<'a> Preprocessor<'a>{
                         self.eat_numeric(char_iter)
                     }else if f == '"'{
                         self.eat_string(char_iter)
-                    }else if f == ' ' || f == '\n'{
+                    }else if f == ' ' || f == '\n' || f == '\r'{
                         char_iter.next().unwrap();
                         continue;
                     }else if is_bracket(f){

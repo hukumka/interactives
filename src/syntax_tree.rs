@@ -514,122 +514,123 @@ static ref OPERATORS_LEVELS: Vec<Vec<&'static str>> = vec![
 }
 
 impl<'a> Expression<'a>{
-    
+	fn get_level(op: &'a TokenData<'a>)->usize{
+	    OPERATORS_LEVELS.iter().position(|ref r| r.contains(&op.token_str())).unwrap()
+	}
 
-fn get_level(op: &'a TokenData<'a>)->usize{
-    OPERATORS_LEVELS.iter().position(|ref r| r.contains(&op.token_str())).unwrap()
-}
-
-fn can_be_binary(op: &str)->bool{
-    OPERATORS_LEVELS.iter().position(|ref r| r.contains(&op)).is_some()
-}
+	fn can_be_binary(op: &str)->bool{
+	    OPERATORS_LEVELS.iter().position(|ref r| r.contains(&op)).is_some()
+	}
 
 
-fn is_precede(one: &'a TokenData<'a>, other: &'a TokenData<'a>)->bool{
-    let one_level = Self::get_level(one);
-    let other_level = Self::get_level(other);
-    other_level >= one_level
-}
+	pub fn is_precede(one: &'a TokenData<'a>, other: &'a TokenData<'a>)->bool{
+	    let one_level = Self::get_level(one);
+	    let other_level = Self::get_level(other);
+	    other_level >= one_level
+	}
 
-fn parse_simple(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
-    let prefix_operators = ["+", "-", "*", "!", "~", "++", "--", "&"];
-    if let Some(prefix) = walker.expect_operator_checked(|x| prefix_operators.contains(&x)){
-        let inner = Expression::parse_simple(walker, error_stream)?;
-        Some(Expression(Box::new(ExpressionData::PrefixOperator(
-            PrefixOperator{
-                operator: prefix,
-                right: inner
-            }
-        ))))
-    }else{
-        let syffix_operators = ["++", "--"];
-        let mut expr = Self::parse_base(walker, error_stream)?;
-        loop{
-            if let Some(syffix) = walker.expect_operator_checked(|x| syffix_operators.contains(&x)){
-                expr = Expression(Box::new(
-                    ExpressionData::SyffixOperator(
-                        SyffixOperator{
-                            operator: syffix,
-                            left: expr
-                        }
-                    )
-                ));
-            }else if let Some(mut index_walker) = walker.expect_layer("["){
-                let index = Expression::parse(&mut index_walker, error_stream)?;
-                println!("{:?}; {:?}", index, index_walker.get_pos());
-                expect_or_put_error!(
-                    index_walker.expect_empty()
-                    | error_stream << ERROR_PARSING_EXPR_EXPECTED_SBRACKET
-                )?;
 
-                expr = Expression(Box::new(
-                    ExpressionData::Index(Index{
-                        expr,
-                        index
-                    })
-                ));
-            }else{
-                break;
-            }
-        }
-        Some(expr)
-    }
-}
 
-fn parse_base(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
-    if let Some(name) = walker.expect_name(){
-        // function or variable
-        if let Some(mut args) = walker.expect_layer("("){
-            // function
-            let arguments = Expression::parse_arguments(&mut args, error_stream)?;
-            Some(Expression(Box::new(
-                ExpressionData::FunctionCall(FunctionCall{
-                    name,
-                    arguments
-                })
-            )))
-        }else{
-            // variable
-            Some(Expression(Box::new(
-                ExpressionData::Variable(name)
-            )))
-        }
-    }else if let Some(mut inner) = walker.expect_layer("("){
-        let expr = Expression::parse(&mut inner, error_stream)?;
-        expect_or_put_error!(
-            inner.expect_empty()
-            | error_stream << ERROR_PARSING_EXPR_EXPECTED_BRACKET
-        )?;
-        Some(expr)
-    }else{
-        // constant
-        let value = expect_or_put_error!(
-            walker.expect_value()
-            | error_stream << ERROR_PARSING_EXPR_EXPECTED_NAME_OR_VALUE
-        )?;
-        Some(Expression(Box::new(ExpressionData::Constant(
-            value
-        ))))
-    }
-}
 
-fn parse_arguments(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Vec<Expression<'a>>>{
-    if walker.is_empty(){
-        return Some(vec![]);
-    }
-    let mut res = vec![];
-    loop{
-        let expr = Expression::parse(walker, error_stream)?;
-        res.push(expr);
-        if walker.is_empty(){
-            return Some(res);
-        }
-        expect_or_put_error!(
-            walker.expect_exact_operator(",")
-            | error_stream << ERROR_PARSING_EXPR_EXPECTED_COMA
-        )?;
-    }
-}
+	fn parse_simple(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+	    let prefix_operators = ["+", "-", "*", "!", "~", "++", "--", "&"];
+	    if let Some(prefix) = walker.expect_operator_checked(|x| prefix_operators.contains(&x)){
+	        let inner = Expression::parse_simple(walker, error_stream)?;
+	        Some(Expression(Box::new(ExpressionData::PrefixOperator(
+	            PrefixOperator{
+	                operator: prefix,
+	                right: inner
+	            }
+	        ))))
+	    }else{
+	        let syffix_operators = ["++", "--"];
+	        let mut expr = Self::parse_base(walker, error_stream)?;
+	        loop{
+	            if let Some(syffix) = walker.expect_operator_checked(|x| syffix_operators.contains(&x)){
+	                expr = Expression(Box::new(
+	                    ExpressionData::SyffixOperator(
+	                        SyffixOperator{
+	                            operator: syffix,
+	                            left: expr
+	                        }
+	                    )
+	                ));
+	            }else if let Some(mut index_walker) = walker.expect_layer("["){
+	                let index = Expression::parse(&mut index_walker, error_stream)?;
+	                println!("{:?}; {:?}", index, index_walker.get_pos());
+	                expect_or_put_error!(
+	                    index_walker.expect_empty()
+	                    | error_stream << ERROR_PARSING_EXPR_EXPECTED_SBRACKET
+	                )?;
+
+	                expr = Expression(Box::new(
+	                    ExpressionData::Index(Index{
+	                        expr,
+	                        index
+	                    })
+	                ));
+	            }else{
+	                break;
+	            }
+	        }
+	        Some(expr)
+	    }
+	}
+
+	fn parse_base(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+	    if let Some(name) = walker.expect_name(){
+	        // function or variable
+	        if let Some(mut args) = walker.expect_layer("("){
+	            // function
+	            let arguments = Expression::parse_arguments(&mut args, error_stream)?;
+	            Some(Expression(Box::new(
+	                ExpressionData::FunctionCall(FunctionCall{
+	                    name,
+	                    arguments
+	                })
+	            )))
+	        }else{
+	            // variable
+	            Some(Expression(Box::new(
+	                ExpressionData::Variable(name)
+	            )))
+	        }
+	    }else if let Some(mut inner) = walker.expect_layer("("){
+	        let expr = Expression::parse(&mut inner, error_stream)?;
+	        expect_or_put_error!(
+	            inner.expect_empty()
+	            | error_stream << ERROR_PARSING_EXPR_EXPECTED_BRACKET
+	        )?;
+	        Some(expr)
+	    }else{
+	        // constant
+	        let value = expect_or_put_error!(
+	            walker.expect_value()
+	            | error_stream << ERROR_PARSING_EXPR_EXPECTED_NAME_OR_VALUE
+	        )?;
+	        Some(Expression(Box::new(ExpressionData::Constant(
+	            value
+	        ))))
+	    }
+	}
+
+	fn parse_arguments(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Vec<Expression<'a>>>{
+	    if walker.is_empty(){
+	        return Some(vec![]);
+	    }
+	    let mut res = vec![];
+	    loop{
+	        let expr = Expression::parse(walker, error_stream)?;
+	        res.push(expr);
+	        if walker.is_empty(){
+	            return Some(res);
+	        }
+	        expect_or_put_error!(
+	            walker.expect_exact_operator(",")
+	            | error_stream << ERROR_PARSING_EXPR_EXPECTED_COMA
+	        )?;
+	    }
+	}
 }
 
 

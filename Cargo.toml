@@ -5,3 +5,5 @@ authors = ["Pavel Arnold <hukumka212@gmail.com>"]
 
 [dependencies]
 lazy_static = "1.0"
+hamt-rs = "0.3.0"
+clap = "2.31.2"

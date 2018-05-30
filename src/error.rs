@@ -31,19 +31,6 @@ pub mod syntax_tree_parser{
 	pub const ERROR_PARSING_VARDEF_EXPECT_SEMICOLON: usize = 0x0212;
 }
 
-pub mod precompiler{
-    pub const ERROR_PRECMP_VARIABLE_REDEFINITION: usize = 0x0300;
-    pub const ERROR_PRECMP_UNKNOWN_CONSTANT_TYPE: usize = 0x0301;
-    pub const ERROR_PRECMP_UNDEFINED_VARIABLE: usize = 0x0302;
-
-    pub const ERROR_PRECMP_DEREFERENCE_OF_NOT_POINTER: usize = 0x0304;
-    pub const ERROR_PRECMP_NO_FITTING_FUNCTION: usize = 0x0305;
-    pub const ERROR_PRECMP_TRYING_TO_GET_VOID_VALUE: usize = 0x0306;
-    pub const ERROR_PRECMP_OPERATOR_NOT_IMPLEMENTED: usize = 0x0307;
-    pub const ERROR_PRECMP_OPERATOR_TYPE_MISMATCH: usize = 0x0308;
-    pub const ERROR_PRECMP_CANNOT_ASSIGN_LVALUE: usize = 0x0309;
-}
-
 
 /// Struct used
 #[derive(Debug)]
@@ -66,4 +53,23 @@ impl<'a> Error<'a>{
     pub fn code(&self)->usize{
         self.code_
     }
+
+    pub fn err_print_message(&self, line_starts: &[usize]){
+        let line = match line_starts.binary_search(&self.position){
+            Ok(x) => x,
+            Err(x) => x - 1
+        };
+        println!("{} {} {}", self.position, line_starts[line], line);
+        let offset = self.position - line_starts[line];
+        let from = line_starts[line];
+        eprintln!("Error {:x} at line {}, offset {}", self.code_, line + 1, offset + 1);
+        eprintln!("{}v", "=".repeat(offset));
+        let to = if line+1 < line_starts.len() {
+            line_starts[line+1]
+        }else{
+            self.text.len()
+        };
+        eprintln!("{}", &self.text[from..to]);
+    }
 }
+
