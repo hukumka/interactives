@@ -65,7 +65,7 @@ trait PageElementFunc<T: Write>{
 
 
 impl PageElementReplacement for String{
-    fn write_page<T: Write>(&self, writer: &mut T, context: &mut Context)->Result<()>{
+    fn write_page<T: Write>(&self, writer: &mut T, _context: &mut Context)->Result<()>{
         write!(writer, "{}", self)?;
         Ok(())
     }
@@ -196,7 +196,7 @@ impl<'a> PageElement<'a> for Type<'a>{
 
 
 impl<'a> PageElement<'a> for TokenData<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, _context: &mut Context<'a>)->Result<()>{
         write!(writer, "{}", self.token_str())?;
         Ok(())
     }
@@ -223,7 +223,7 @@ impl<'a> PageElement<'a> for Expression<'a>{
                 }
             },
             ExpressionData::SyffixOperator(op) => {
-                let brct = need_brackets_prefix(&op.left);
+                let brct = need_brackets_syffix(&op.left);
                 html!{writer, context,
                     call{|w, c| write_expression_brackets(w, c, &op.left, brct)}
                     span(class="operator")[{op.operator}]
@@ -257,13 +257,6 @@ impl<'a> PageElement<'a> for Expression<'a>{
                     span(class="constant")[
                         {c}
                     ]
-                }
-            },
-            ExpressionData::Array(arr) => {
-                html!{writer, context,
-                    span(class="operator")[{"["}]
-                    coma{&arr}
-                    span(class="operator")[{"]"}]
                 }
             }
         };

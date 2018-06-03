@@ -32,12 +32,6 @@ pub struct Type<'a>{
     pub pointer_count: usize
 }
 
-impl<'a> Type<'a>{
-    fn is(&self, base: &str, pointer_count: usize)->bool{
-        self.base.token_str() == base && self.pointer_count == pointer_count
-    }
-}
-
 
 #[derive(Debug)]
 pub struct Block<'a>{
@@ -80,7 +74,6 @@ pub enum ExpressionData<'a>{
     Index(Index<'a>),
     Variable(&'a TokenData<'a>),
     Constant(&'a TokenData<'a>),
-    Array(Vec<Expression<'a>>)
 }
 
 
@@ -529,8 +522,17 @@ impl<'a> Expression<'a>{
 	    other_level >= one_level
 	}
 
-
-
+    pub fn token(&self)->&TokenData<'a>{
+        match self.0.as_ref() {
+            ExpressionData::Variable(v) => v,
+            ExpressionData::Constant(c) => c,
+            ExpressionData::BinaryOperator(op) => op.operator,
+            ExpressionData::SyffixOperator(op) => op.operator,
+            ExpressionData::PrefixOperator(op) => op.operator,
+            ExpressionData::Index(i) => i.expr.token(),
+            ExpressionData::FunctionCall(f) => f.name,
+        }
+    }
 
 	fn parse_simple(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
 	    let prefix_operators = ["+", "-", "*", "!", "~", "++", "--", "&"];
@@ -557,7 +559,6 @@ impl<'a> Expression<'a>{
 	                ));
 	            }else if let Some(mut index_walker) = walker.expect_layer("["){
 	                let index = Expression::parse(&mut index_walker, error_stream)?;
-	                println!("{:?}; {:?}", index, index_walker.get_pos());
 	                expect_or_put_error!(
 	                    index_walker.expect_empty()
 	                    | error_stream << ERROR_PARSING_EXPR_EXPECTED_SBRACKET

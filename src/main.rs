@@ -1,11 +1,10 @@
-#![allow(warnings)]
-
 #![feature(test)]
 #![feature(box_patterns)]
 #![feature(log_syntax)]
 
-#[macro_use]
-extern crate lazy_static;
+#[macro_use] extern crate log;
+extern crate env_logger;
+#[macro_use] extern crate lazy_static;
 extern crate test;
 extern crate clap;
 
@@ -16,26 +15,29 @@ mod bracket_tree;
 mod syntax_tree;
 mod compiler;
 mod page;
+mod types;
 
 use std::fs::File;
 use std::io::Read;
-use std::env;
 
 use clap::{
     Arg,
     App,
-    SubCommand
 };
 
 use lexer::Preprocessor;
 use bracket_tree::BracketTree;
 use syntax_tree::parse_program;
+use syntax_tree::Root;
 use page::{
     PageElement,
     Context
 };
+use compiler::Compiler;
 
 fn main() {
+    env_logger::init();
+
     let matches = App::new("Interactives")
         .version("0.1")
         .about("Build html page from \"C\" code.")
@@ -65,7 +67,7 @@ fn main() {
     let line_starts: Vec<usize> = [0 as usize].iter()
         .map(|x| *x)
         .chain(code.char_indices()
-                   .filter(|(i, x)| *x == '\n')
+                   .filter(|(_, x)| *x == '\n')
                    .map(|(i, _)| i)
         ).collect();
 
@@ -98,7 +100,19 @@ fn main() {
     let mut output = File::create(output).unwrap();
     let mut context = Context::new();
     for r in &syntax_tree{
-        r.write_page(&mut output, &mut context);
+        r.write_page(&mut output, &mut context).unwrap();
     }
     output.sync_all().unwrap();
+
+    println!("Write compiled");
+    let mut compiler = Compiler::new();
+    for f in &syntax_tree{
+        if let Root::FunctionDefinition(f) = f{
+            compiler.compile_function(f);
+        }
+    }
+    for e in compiler.errors(){
+        e.err_print_message(&line_starts);
+    }
+    compiler.print();
 }

@@ -125,7 +125,7 @@ pub fn expect_layer(&mut self, opening_bracket: &str)->Option<BracketTreeWalker<
     }
 
     /// Returns `TokenData` corresponding to operator if it is next token, and move to next.
-    pub fn expect_operator(&mut self)->Option<&'a TokenData<'a>>{
+    pub fn _expect_operator(&mut self)->Option<&'a TokenData<'a>>{
         self.expect_token_of_type_checked(TokenType::Operator, |_| true)
     }
 
