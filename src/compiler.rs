@@ -44,6 +44,9 @@ pub enum Code {
     DivI,
     Mod,
 
+    Inc,
+    Dec,
+
     Dereference,
     PointerSet,
 
@@ -323,12 +326,80 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_expression_syffix_op(&mut self, expr: &'a SyffixOperator<'a>)->Option<(Type, bool)>{
-        None
+    fn compile_expression_syffix_op(&mut self, op: &'a SyffixOperator<'a>)->Option<(Type, bool)>{
+        let (type_, is_rvalue) = self.compile_expression(&op.left)?;
+        if is_rvalue && type_ == Type::int() || type_.pointer_count > 0 {
+            self.take_latest_expr();
+            let id = self.put_expr();
+            if op.operator.token_str() == "++" {
+                self.operations.push(Operation {
+                    code: Code::Inc,
+                    args: vec![id]
+                });
+                Some((type_, is_rvalue))
+            }else if op.operator.token_str() == "--"{
+                self.operations.push(Operation {
+                    code: Code::Dec,
+                    args: vec![id]
+                });
+                Some((type_, is_rvalue))
+            } else {
+                self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_OPERATOR, op.operator));
+                None
+            }
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, op.operator));
+            None
+        }
     }
 
-    fn compile_expression_prefix_op(&mut self, expr: &'a PrefixOperator<'a>)->Option<(Type, bool)>{
-        None
+    fn compile_expression_prefix_op(&mut self, op: &'a PrefixOperator<'a>)->Option<(Type, bool)>{
+        let id = self.take_latest_expr();
+        let res_id = self.put_expr();
+        match op.operator.token_str(){
+            x if x == "--" || x == "++" => {
+                let (type_, is_rvalue) = self.compile_expression(&op.right)?;
+                if is_rvalue && type_ == Type::int() || type_.pointer_count > 0 {
+                    if x == "--"{
+                        self.operations.push(Operation {
+                            code: Code::Dec,
+                            args: vec![id]
+                        });
+                    }else{
+                        self.operations.push(Operation {
+                            code: Code::Inc,
+                            args: vec![id]
+                        });
+                    }
+                    Some((type_, is_rvalue))
+                }else{
+                    self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, op.operator));
+                    None
+                }
+            },
+            "&" => {
+                let (type_, is_rvalue) = self.compile_expression(&op.right)?;
+                if is_rvalue{
+                    Some((type_.pointer(), false))
+                }else{
+                    self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, op.operator));
+                    None
+                }
+            },
+            "*" => {
+                let type_ = self.compile_expression_rvalue(&op.right)?;
+                if let Some(type_) = type_.dereference(){
+                    Some((type_, true))
+                }else{
+                    self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, op.operator));
+                    None
+                }
+            }
+            _ => {
+                self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_OPERATOR, op.operator));
+                None
+            }
+        }
     }
 
     fn compile_expression_variable(&mut self, var: &'a TokenData<'a>)->Option<(Type, bool)>{
@@ -445,11 +516,96 @@ impl<'a> Compiler<'a>{
                 "*" => self.compile_operator_mul(operator.operator, left_type, right_type),
                 "/" => self.compile_operator_div(operator.operator, left_type, right_type),
                 "%" => self.compile_operator_mod(operator.operator, left_type, right_type),
+                "==" => self.compile_eq_operator(operator.operator, left_type, right_type),
+                "<" => self.compile_less_operator(operator.operator, left_type, right_type),
+                ">" => self.compile_greater_operator(operator.operator, left_type, right_type),
+                "<=" => self.compile_less_or_eq_operator(operator.operator, left_type, right_type),
+                ">=" => self.compile_greater_or_eq_operator(operator.operator, left_type, right_type),
                 _ => {
                     self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_OPERATOR, operator.operator));
                     None
                 }
             }
+        }
+    }
+
+    fn compile_less_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        if l == Type::int() && r == Type::int(){
+            let right = self.take_latest_expr();
+            let left = self.take_latest_expr();
+            let res = self.put_expr();
+            self.operations.push(Operation{
+                code: Code::Less,
+                args: vec![res, left, right]
+            });
+            Some((Type::int(), false))
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
+            None
+        }
+    }
+
+    fn compile_greater_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        if l == Type::int() && r == Type::int(){
+            let right = self.take_latest_expr();
+            let left = self.take_latest_expr();
+            let res = self.put_expr();
+            self.operations.push(Operation{
+                code: Code::Less,
+                args: vec![res, right, left]
+            });
+            Some((Type::int(), false))
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
+            None
+        }
+    }
+
+    fn compile_less_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        if l == Type::int() && r == Type::int(){
+            let right = self.take_latest_expr();
+            let left = self.take_latest_expr();
+            let res = self.put_expr();
+            self.operations.push(Operation{
+                code: Code::LessOrEq,
+                args: vec![res, left, right]
+            });
+            Some((Type::int(), false))
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
+            None
+        }
+    }
+
+    fn compile_greater_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        if l == Type::int() && r == Type::int(){
+            let right = self.take_latest_expr();
+            let left = self.take_latest_expr();
+            let res = self.put_expr();
+            self.operations.push(Operation{
+                code: Code::LessOrEq,
+                args: vec![res, right, left]
+            });
+            Some((Type::int(), false))
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
+            None
+        }
+    }
+
+    fn compile_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        if l == r{
+            let right = self.take_latest_expr();
+            let left = self.take_latest_expr();
+            let res = self.put_expr();
+            self.operations.push(Operation{
+                code: Code::Eq,
+                args: vec![res, left, right]
+            });
+            Some((l, false))
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
+            None
         }
     }
 

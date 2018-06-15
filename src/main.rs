@@ -34,6 +34,7 @@ use page::{
     Context
 };
 use compiler::Compiler;
+use error::Error;
 
 fn main() {
     env_logger::init();
@@ -68,7 +69,7 @@ fn main() {
         .map(|x| *x)
         .chain(code.char_indices()
                    .filter(|(_, x)| *x == '\n')
-                   .map(|(i, _)| i)
+                   .map(|(i, _)| i+1)
         ).collect();
 
     // tokenize
@@ -89,9 +90,7 @@ fn main() {
     let syntax_tree = match parse_program(&mut walker, &mut error_stream){
         Some(x) => x,
         None => {
-            for e in error_stream{
-                e.err_print_message(&line_starts);
-            }
+            Error::print_errors(&error_stream, &line_starts);
             panic!("Execution aborted due to present error.")
         }
     };
@@ -106,13 +105,19 @@ fn main() {
 
     println!("Write compiled");
     let mut compiler = Compiler::new();
-    for f in &syntax_tree{
-        if let Root::FunctionDefinition(f) = f{
-            compiler.compile_function(f);
-        }
+    let res = syntax_tree.iter()
+        .filter_map(|x|{
+            match x{
+                Root::FunctionDefinition(x) => Some(x),
+                _ => None
+            }
+        })
+        .map(|x| compiler.compile_function(x))
+        .fold(Some(0), |a, b| a.and(b));
+
+    if let Some(_) = res{
+        compiler.print();
+    }else {
+        Error::print_errors(compiler.errors(), &line_starts);
     }
-    for e in compiler.errors(){
-        e.err_print_message(&line_starts);
-    }
-    compiler.print();
 }

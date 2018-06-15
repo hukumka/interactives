@@ -95,12 +95,20 @@ impl<'a> Error<'a>{
         self.code_
     }
 
+    pub fn print_errors<T>(x: T, line_starts: &[usize])
+        where T: IntoIterator<Item=&'a Error<'a>>
+    {
+        println!("=== Errors! ===");
+        for e in x{
+            e.err_print_message(line_starts);
+        }
+    }
+
     pub fn err_print_message(&self, line_starts: &[usize]){
         let line = match line_starts.binary_search(&self.position){
             Ok(x) => x,
             Err(x) => x - 1
         };
-        println!("{} {} {}", self.position, line_starts[line], line);
         let offset = self.position - line_starts[line];
         let from = line_starts[line];
         eprintln!("Error {}::{}({:x}) at line {}, offset {}",
@@ -110,7 +118,7 @@ impl<'a> Error<'a>{
                   line + 1,
                   offset + 1
         );
-        eprintln!("{}v", "=".repeat(offset));
+        eprintln!("{}v", "-".repeat(offset));
         let to = if line+1 < line_starts.len() {
             line_starts[line+1]
         }else{
