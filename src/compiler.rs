@@ -16,7 +16,9 @@ use syntax_tree::{
     BinaryOperator,
     SyffixOperator,
     PrefixOperator,
-    Index
+    Index,
+
+    TreeItem
 };
 use error::Error;
 use error::compiler::*;
@@ -157,12 +159,46 @@ impl<'a> FunctionManager<'a>{
 }
 
 
+pub struct DebugInfo{
+    /// Map from offset of variable reference to its offset in stack
+    variables: HashMap<usize, usize>,
+    /// Map from offset of statement to its address in VM code
+    statements: HashMap<usize, usize>
+}
+
+impl DebugInfo{
+    fn new()->Self{
+        Self{
+            variables: HashMap::new(),
+            statements: HashMap::new()
+        }
+    }
+
+    fn reg_variable_offset<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: usize){
+        self.variables.insert(name.get_pos(), stack_offset);
+    }
+
+    fn reg_statement_offset<'a>(&mut self, statement: &'a Statement<'a>, vm_offset: usize){
+        self.statements.insert(statement.first_token().get_pos(), vm_offset);
+    }
+
+    fn get_variable_offset<'a>(&self, name: &'a TokenData<'a>)->Option<usize>{
+        self.variables.get(&name.get_pos()).map(|x| *x)
+    }
+
+    fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
+        self.statements.get(&statement.first_token().get_pos()).map(|x| *x)
+    }
+}
+
+
 pub struct Compiler<'a>{
     operations: Vec<Operation>,
     variables: VariableManager<'a>,
     temp_values: usize,
     current_function: Option<&'a FunctionDefinition<'a>>,
     functions: FunctionManager<'a>,
+    debug_info: DebugInfo,
     errors: Vec<Error<'a>>
 }
 
@@ -175,8 +211,13 @@ impl<'a> Compiler<'a>{
             functions: FunctionManager::new(),
             temp_values: 0,
             current_function: None,
+            debug_info: DebugInfo::new(),
             errors: vec![],
         }
+    }
+
+    pub fn get_debug_info(&self)->&DebugInfo{
+        &self.debug_info
     }
 
     pub fn register_function_definition(&mut self, f: &'a FunctionDefinition<'a>)->Result<usize, Error>{
@@ -197,6 +238,7 @@ impl<'a> Compiler<'a>{
         self.current_function = Some(func);
         let start = self.operations.len();
         self.variables.push();
+        self.put_expr(); // reverse space for return value
         let arguments_parsed = func.arguments.iter()
             .map(|v| {
                 if let Err(x) = self.variables.define_variable(v){
@@ -225,14 +267,24 @@ impl<'a> Compiler<'a>{
     fn compile_statement(&mut self, statement: &'a Statement<'a>)->Option<()>{
         match statement{
             Statement::Expression(e) => {
+                self.debug_info.reg_statement_offset(statement, self.operations.len());
                 let res = self.compile_expression(&e).map(|_| ());
                 self.take_latest_expr();
                 res
             },
-            Statement::Return(e) => self.compile_return(&e.expression),
-            Statement::VariableDefinition(v) => self.compile_variable_definition(&v),
-            Statement::ForLoop(l) => self.compile_for_loop(&l),
-            Statement::Condition(c) => self.compile_condition(&c)
+            Statement::Return(e) => {
+                self.debug_info.reg_statement_offset(statement, self.operations.len());
+                self.compile_return(&e.expression)
+            },
+            Statement::VariableDefinition(v) => {
+                self.debug_info.reg_statement_offset(statement, self.operations.len());
+                self.compile_variable_definition(&v)
+            },
+            Statement::ForLoop(l) => self.compile_for_loop(&l, statement),
+            Statement::Condition(c) => {
+                self.debug_info.reg_statement_offset(statement, self.operations.len());
+                self.compile_condition(&c)
+            }
         }
     }
 
@@ -244,8 +296,12 @@ impl<'a> Compiler<'a>{
         self.compile_expression_of_type(ret, required_type)?;
         let id = self.take_latest_expr();
         self.operations.push(Operation{
+            code: Code::Clone,
+            args: vec![id, 0]
+        });
+        self.operations.push(Operation{
             code: Code::Return,
-            args: vec![id]
+            args: vec![]
         });
         Some(())
     }
@@ -265,7 +321,7 @@ impl<'a> Compiler<'a>{
         Some(())
     }
 
-    fn compile_for_loop(&mut self, for_loop: &'a ForLoop<'a>)->Option<()>{
+    fn compile_for_loop(&mut self, for_loop: &'a ForLoop<'a>, statement: &'a Statement<'a>)->Option<()>{
         self.variables.push();
         let succ = match &for_loop.init{
             ForLoopInitialization::VariableDefinition(v) => self.compile_variable_definition(&v),
@@ -276,6 +332,8 @@ impl<'a> Compiler<'a>{
             }
         };
         let loop_start = self.operations.len();
+        // for loop has breakpoint at condition check
+        self.debug_info.reg_statement_offset(statement, self.operations.len());
         let succ = succ.and(self.compile_expression_of_type(&for_loop.condition, Type::int()));
         let jump_op = self.operations.len();
         let id = self.take_latest_expr();
@@ -463,15 +521,15 @@ impl<'a> Compiler<'a>{
         })?;
         let type_ = self.functions.types[func_id].clone();
         if func.arguments.len() == type_.args.len(){
+            self.put_expr(); // reserve space for result
             let res = func.arguments.iter()
                 .zip(&type_.args)
                 .map(|(arg, type_)| self.compile_expression_of_type(arg, *type_))
                 .fold(Some(()), |a, b| a.and(b));
-            self.temp_values -= func.arguments.len();
-            let id = self.put_expr();
+            self.temp_values -= func.arguments.len() + 1;
             self.operations.push(Operation{
                 code: Code::Call,
-                args: vec![id]
+                args: vec![func_id]
             });
             res.map(|_| (type_.ret, false))
         }else{
