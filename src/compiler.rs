@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use lexer::TokenData;
 use syntax_tree::{
-    Root,
     VariableDefinition,
     Variable,
     FunctionDefinition,
@@ -180,6 +179,10 @@ impl<'a> Compiler<'a>{
         }
     }
 
+    pub fn register_function_definition(&mut self, f: &'a FunctionDefinition<'a>)->Result<usize, Error>{
+        self.functions.register_function_definition(f)
+    }
+
     pub fn print(&self){
         for op in &self.operations{
             println!("{:?}", op);
@@ -253,7 +256,7 @@ impl<'a> Compiler<'a>{
             self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.base));
             Err(e)
         }).ok()?;
-        let type_ = self.compile_expression_of_type(&var.set_to, required_type)?;
+        let _type_ = self.compile_expression_of_type(&var.set_to, required_type)?;
         let from = self.take_latest_expr();
         self.operations.push(Operation{
             code: Code::Clone,
@@ -355,7 +358,7 @@ impl<'a> Compiler<'a>{
 
     fn compile_expression_prefix_op(&mut self, op: &'a PrefixOperator<'a>)->Option<(Type, bool)>{
         let id = self.take_latest_expr();
-        let res_id = self.put_expr();
+        let _res_id = self.put_expr();
         match op.operator.token_str(){
             x if x == "--" || x == "++" => {
                 let (type_, is_rvalue) = self.compile_expression(&op.right)?;
@@ -403,7 +406,10 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_expression_variable(&mut self, var: &'a TokenData<'a>)->Option<(Type, bool)>{
-        let var_id = self.variables.get_id(var.token_str())?;
+        let var_id = self.variables.get_id(var.token_str()).or_else(||{
+            self.errors.push(Error::from_token(ERROR_COMPILER_UNDEFINED_VARIABLE, var));
+            None
+        })?;
         let type_ = self.variables.types[var_id];
         let id = self.put_expr();
         self.operations.push(Operation{
@@ -414,7 +420,13 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_expression_constant(&mut self, c: &'a TokenData<'a>)->Option<(Type, bool)>{
-        let i = c.token_str().parse::<usize>().ok()?;
+        let i = c.token_str().parse::<usize>().ok();
+        let i = if let Some(i) = i{
+            i
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_INVALID_CONSTANT, c));
+            return None;
+        };
         let id = self.put_expr();
         self.operations.push(Operation{
             code: Code::ConstInt,
@@ -429,7 +441,7 @@ impl<'a> Compiler<'a>{
         if index_type != Type::int(){
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, i.index.token()));
             None
-        }else if let Some(type_) = pointer_type.dereference(){
+        }else if let Some(_type_) = pointer_type.dereference(){
             let index = self.take_latest_expr();
             let pointer = self.take_latest_expr();
             let id = self.put_expr();
@@ -495,7 +507,7 @@ impl<'a> Compiler<'a>{
         }else if op == "="{
             let (type_, is_reference) = self.compile_expression(&operator.left)?;
             if is_reference{
-                let right = self.compile_expression_of_type(&operator.right, type_)?;
+                let _right = self.compile_expression_of_type(&operator.right, type_)?;
                 let r = self.take_latest_expr();
                 let l = self.take_latest_expr();
                 self.operations.push(Operation{
@@ -517,6 +529,7 @@ impl<'a> Compiler<'a>{
                 "/" => self.compile_operator_div(operator.operator, left_type, right_type),
                 "%" => self.compile_operator_mod(operator.operator, left_type, right_type),
                 "==" => self.compile_eq_operator(operator.operator, left_type, right_type),
+                "!=" => self.compile_not_eq_operator(operator.operator, left_type, right_type),
                 "<" => self.compile_less_operator(operator.operator, left_type, right_type),
                 ">" => self.compile_greater_operator(operator.operator, left_type, right_type),
                 "<=" => self.compile_less_or_eq_operator(operator.operator, left_type, right_type),
@@ -600,6 +613,22 @@ impl<'a> Compiler<'a>{
             let res = self.put_expr();
             self.operations.push(Operation{
                 code: Code::Eq,
+                args: vec![res, left, right]
+            });
+            Some((l, false))
+        }else{
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
+            None
+        }
+    }
+
+    fn compile_not_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        if l == r{
+            let right = self.take_latest_expr();
+            let left = self.take_latest_expr();
+            let res = self.put_expr();
+            self.operations.push(Operation{
+                code: Code::NotEq,
                 args: vec![res, left, right]
             });
             Some((l, false))
@@ -734,7 +763,7 @@ impl<'a> Compiler<'a>{
         Some(())
     }
 
-    fn compile_convert_type(&mut self, token: &'a TokenData<'a>, from: Type, into: Type, id: usize)->Option<()>{
+    fn compile_convert_type(&mut self, token: &'a TokenData<'a>, from: Type, into: Type, _id: usize)->Option<()>{
         if from == into{
             Some(())
         }else if from.pointer_count>0 && into == Type::int(){

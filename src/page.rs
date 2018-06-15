@@ -118,6 +118,7 @@ macro_rules! html{
     };
 
     ($writer: expr, $context: expr, seq{$c: expr} $($t: tt)*) => {
+        #[allow(unused_mut)]
         let mut iter = $c.into_iter();
         for e in iter{
             e.write_page($writer, $context)?;

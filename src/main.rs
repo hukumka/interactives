@@ -74,7 +74,7 @@ fn main() {
 
     // tokenize
     println!("Tokenize.");
-    let mut preprocessor = Preprocessor::new(&code);
+    let preprocessor = Preprocessor::new(&code);
     let tokens = preprocessor.tokenize().unwrap_or_else(|err|{
         err.err_print_message(&line_starts);
         panic!("Execution aborted due to present error.")
@@ -103,8 +103,20 @@ fn main() {
     }
     output.sync_all().unwrap();
 
+    // compile
     println!("Write compiled");
     let mut compiler = Compiler::new();
+    let mut res = Some(0);
+    for r in &syntax_tree{
+        match r{
+            Root::VariableDefinition(_) => {
+                unimplemented!("Global variable yet to be supported")
+            },
+            Root::FunctionDefinition(x) => {
+                res = compiler.register_function_definition(x).ok();
+            }
+        }
+    }
     let res = syntax_tree.iter()
         .filter_map(|x|{
             match x{
@@ -113,7 +125,7 @@ fn main() {
             }
         })
         .map(|x| compiler.compile_function(x))
-        .fold(Some(0), |a, b| a.and(b));
+        .fold(res, |a, b| a.and(b));
 
     if let Some(_) = res{
         compiler.print();
