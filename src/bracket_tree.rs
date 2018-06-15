@@ -84,11 +84,11 @@ tree: &'a BracketTree<'a>
 }
 
 impl<'a> BracketTreeWalker<'a>{
-/// Returns `BracketTreeWalker` for inner layer if its match and move `self` to position after
-/// layer, other wise stays unchanged
-/// 
-/// opening_bracket must be opening bracket and not any other symbol
-pub fn expect_layer(&mut self, opening_bracket: &str)->Option<BracketTreeWalker<'a>>{
+    /// Returns `BracketTreeWalker` for inner layer if its match and move `self` to position after
+    /// layer, other wise stays unchanged
+    ///
+    /// opening_bracket must be opening bracket and not any other symbol
+    pub fn expect_layer(&mut self, opening_bracket: &str)->Option<BracketTreeWalker<'a>>{
         assert!(is_open_bracket(opening_bracket));
         if self.pos == self.end{
             return None;
@@ -108,6 +108,10 @@ pub fn expect_layer(&mut self, opening_bracket: &str)->Option<BracketTreeWalker<
         }else{
             None
         }
+    }
+
+    pub fn put_back(&mut self){
+        self.pos-=1;
     }
 
     /// Returns `TokenData` corresponding to name if it is next token, and move to next.

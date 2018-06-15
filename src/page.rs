@@ -19,6 +19,7 @@ use syntax_tree::{
     Statement,
     Type
 };
+use syntax_tree::Return;
 
 
 pub struct Context<'a>{
@@ -375,7 +376,7 @@ impl<'a> PageElement<'a> for Statement<'a>{
                     }
                 ]
             }},
-            Statement::Return(e) => {html!{writer, context,
+            Statement::Return(Return{expression: e, ..}) => {html!{writer, context,
                 div(class="statement")[
                     tabs{
                         span(class="keyword")[

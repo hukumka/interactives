@@ -4,6 +4,7 @@ use error::Error;
 use error::syntax_tree_parser::*;
 
 
+
 #[derive(Debug)]
 pub enum Root<'a>{
     FunctionDefinition(FunctionDefinition<'a>),
@@ -16,7 +17,7 @@ pub struct FunctionDefinition<'a>{
     pub return_type: Type<'a>,
     pub arguments: Vec<Variable<'a>>,
     pub name: &'a TokenData<'a>,
-    pub body: Block<'a>
+    pub body: Block<'a>,
 }
 
 #[derive(Debug)]
@@ -45,7 +46,20 @@ pub enum Statement<'a>{
     VariableDefinition(VariableDefinition<'a>),
     Condition(Condition<'a>),
     ForLoop(ForLoop<'a>),
-    Return(Expression<'a>),
+    Return(Return<'a>),
+}
+
+
+#[derive(Debug)]
+pub struct Return<'a>{
+    pub expression: Expression<'a>,
+    pub first_token: &'a TokenData<'a>
+}
+
+impl<'a> TreeItem<'a> for Return<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.first_token
+    }
 }
 
 
@@ -81,7 +95,8 @@ pub enum ExpressionData<'a>{
 pub struct Condition<'a>{
     pub condition: Expression<'a>,
     pub then: Block<'a>,
-    pub else_: Option<Block<'a>>
+    pub else_: Option<Block<'a>>,
+    pub first_token: &'a TokenData<'a>
 }
 
 
@@ -90,7 +105,8 @@ pub struct ForLoop<'a>{
     pub init: ForLoopInitialization<'a>,
     pub step: Expression<'a>,
     pub condition: Expression<'a>,
-    pub body: Block<'a>
+    pub body: Block<'a>,
+    pub first_token: &'a TokenData<'a>
 }
 
 
@@ -143,6 +159,11 @@ pub trait Parseable<'a>: Sized{
         let mut v = vec![];
         Self::parse(walker, &mut v)
     }
+
+}
+
+pub trait TreeItem<'a>{
+    fn first_token(&self)->&'a TokenData<'a>;
 }
 
 
@@ -172,8 +193,8 @@ pub fn parse_program<'a>(walker: &mut BracketTreeWalker<'a>, error_stream: &mut 
 /// Root is either
 /// type name = *expr*;
 /// type name(*args*){*body*}
-impl<'a> Parseable<'a> for Root<'a>{
-    fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+impl<'a> Parseable<'a> for Root<'a> {
+    fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>) -> Option<Self> {
         // Root is either 
         // VariableDefinition: [Type, Name, Operator(=), Expression, Operator(;), ..]
         // FunctionDefinition: [Type, Name, Layer(Arguments), Layer{Block}]
@@ -184,20 +205,20 @@ impl<'a> Parseable<'a> for Root<'a>{
             | error_stream << ERROR_PARSING_ROOT_EXPECT_NAME
         )?;
         // if it's operator(=) go into parsing variable
-        if walker.expect_exact_operator("=").is_some(){
+        if walker.expect_exact_operator("=").is_some() {
             let expr = Expression::parse(walker, error_stream)?;
             expect_or_put_error!(
                 walker.expect_exact_operator(";")
                 | error_stream << ERROR_PARSING_ROOT_EXPECT_SEMICOLON
             )?;
-            Some(Root::VariableDefinition(VariableDefinition{
-                variable: Variable{
+            Some(Root::VariableDefinition(VariableDefinition {
+                variable: Variable {
                     type_,
                     name,
                 },
                 set_to: expr
             }))
-        }else{
+        } else {
             let mut args_walker = expect_or_put_error!(
                 walker.expect_layer("(") 
                 | error_stream << ERROR_PARSING_ROOT_EXPECT_ROOT
@@ -208,12 +229,21 @@ impl<'a> Parseable<'a> for Root<'a>{
                 | error_stream << ERROR_PARSING_FUNC_EXPECT_BODY
             )?;
             let body = Block::parse(&mut body_walker, error_stream);
-            Some(Root::FunctionDefinition(FunctionDefinition{
+            Some(Root::FunctionDefinition(FunctionDefinition {
                 return_type: type_,
                 name,
                 arguments: args?,
                 body: body?
             }))
+        }
+    }
+}
+
+impl<'a> TreeItem<'a> for Root<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        match self {
+            Root::FunctionDefinition(x) => x.first_token(),
+            Root::VariableDefinition(x) => x.first_token()
         }
     }
 }
@@ -234,6 +264,13 @@ impl<'a> Parseable<'a> for Type<'a>{
             pointer_count += x.token_str().len();
         }
         Some(Self{base, pointer_count})
+    }
+
+}
+
+impl<'a> TreeItem<'a> for Type<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.base
     }
 }
 
@@ -264,6 +301,12 @@ impl<'a> FunctionDefinition<'a>{
     }
 }
 
+impl<'a> TreeItem<'a> for FunctionDefinition<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.return_type.first_token()
+    }
+}
+
 
 impl<'a> Parseable<'a> for Block<'a>{
     fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
@@ -273,6 +316,7 @@ impl<'a> Parseable<'a> for Block<'a>{
         }
         Some(Block{statements})
     }
+
 }
 
 impl<'a> Block<'a>{
@@ -287,27 +331,34 @@ impl<'a> Block<'a>{
 }
 
 
-impl<'a> Parseable<'a> for Statement<'a>{
-    fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+impl<'a> Parseable<'a> for Statement<'a> {
+    fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>) -> Option<Self> {
         let walker_start = walker.clone();
-        if let Some(key) = walker.expect_name(){
-            match key.token_str(){
-                "if" => Condition::parse(walker, error_stream).map(|x| Statement::Condition(x)),
-                "for" => ForLoop::parse(walker, error_stream).map(|x| Statement::ForLoop(x)),
+        if let Some(key) = walker.expect_name() {
+            match key.token_str() {
+                "if" => {
+                    walker.put_back();
+                    Condition::parse(walker, error_stream).map(|x| Statement::Condition(x))
+                },
+                "for" => {
+                    walker.put_back();
+                    ForLoop::parse(walker, error_stream).map(|x| Statement::ForLoop(x))
+                },
                 "return" => {
                     let expr = Expression::parse(walker, error_stream)?;
                     expect_or_put_error!(
                         walker.expect_exact_operator(";")
                         | error_stream << ERROR_PARSING_STATEMENT_EXPECT_SEMICOLON
                     )?;
-                    Some(Statement::Return(expr))
+                    let ret = Return { first_token: key, expression: expr };
+                    Some(Statement::Return(ret))
                 }
                 _ => {
-                    *walker = walker_start.clone();   
-                    if let Some(vardef) = VariableDefinition::parse(walker, error_stream){
+                    *walker = walker_start.clone();
+                    if let Some(vardef) = VariableDefinition::parse(walker, error_stream) {
                         Some(Statement::VariableDefinition(vardef))
-                    }else{
-                        *walker = walker_start;   
+                    } else {
+                        *walker = walker_start;
                         let expr = Expression::parse(walker, error_stream)?;
                         expect_or_put_error!(
                             walker.expect_exact_operator(";")
@@ -317,13 +368,25 @@ impl<'a> Parseable<'a> for Statement<'a>{
                     }
                 }
             }
-        }else{
+        } else {
             let expr = Expression::parse(walker, error_stream)?;
             expect_or_put_error!(
                 walker.expect_exact_operator(";")
                 | error_stream << ERROR_PARSING_STATEMENT_EXPECT_SEMICOLON
             )?;
             Some(Statement::Expression(expr))
+        }
+    }
+}
+
+impl<'a> TreeItem<'a> for Statement<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        match self{
+            Statement::VariableDefinition(x) => x.first_token(),
+            Statement::Expression(x) => x.first_token(),
+            Statement::Return(x) => x.first_token(),
+            Statement::Condition(x) => x.first_token(),
+            Statement::ForLoop(x) => x.first_token()
         }
     }
 }
@@ -347,11 +410,19 @@ impl<'a> Parseable<'a> for VariableDefinition<'a>{
             set_to: expr
         })
     }
+
+}
+
+impl<'a> TreeItem<'a> for VariableDefinition<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.variable.type_.first_token()
+    }
 }
 
 
 impl<'a> Parseable<'a> for Condition<'a>{
     fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+        let keyword = walker.expect_name()?;
         let mut cond_walker = expect_or_put_error!(
             walker.expect_layer("(")
             | error_stream << ERROR_PARSING_COND_EXPECT_CONDITION
@@ -368,14 +439,22 @@ impl<'a> Parseable<'a> for Condition<'a>{
         Some(Condition{
             condition,
             then: block,
-            else_
+            else_,
+            first_token: keyword
         })
+    }
+}
+
+impl<'a> TreeItem<'a> for Condition<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.first_token
     }
 }
 
 
 impl<'a> Parseable<'a> for ForLoop<'a>{
     fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+        let keyword = walker.expect_name()?;
         let mut setup_walker = expect_or_put_error!(
             walker.expect_layer("(")
             | error_stream << ERROR_PARSING_FOR_EXPECT_INIT
@@ -399,7 +478,7 @@ impl<'a> Parseable<'a> for ForLoop<'a>{
                     type_,   
                     name,
                 },
-                set_to
+                set_to,
             })
         }else{
             let expr = Expression::parse(&mut setup_walker, error_stream)?;
@@ -429,63 +508,85 @@ impl<'a> Parseable<'a> for ForLoop<'a>{
             init,
             condition: cond,
             step,
-            body
+            body,
+            first_token: keyword
         })
+    }
+}
+
+impl<'a> TreeItem<'a> for ForLoop<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.first_token
     }
 }
 
 
 impl<'a> Parseable<'a> for Expression<'a>{
-fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
-    // shunting yurd algorithm
-    let mut operand_stack = vec![];
-    let mut operator_stack = vec![];
-    let first_operand = Self::parse_simple(walker, error_stream)?;
-    operand_stack.push(first_operand);
-    while let Some(operator) = walker.expect_operator_checked(
-        Self::can_be_binary
-    ){
-        loop{
-            if let Some(head) = operator_stack.pop(){
-                if Self::is_precede(head, operator){
-                    // cannot panic, since amount of operands always greater then amount of
-                    // operators.
-                    let right = operand_stack.pop().unwrap();
-                    let left = operand_stack.pop().unwrap();
-                    let expr = Expression(Box::new(ExpressionData::BinaryOperator(
-                        BinaryOperator{
-                            left,
-                            right,
-                            operator: head
-                        }
-                    )));
-                    operand_stack.push(expr);
-                }else{
-                    operator_stack.push(head);
-                    break;
-                }
-            }else{
-                break;
-            }
-        }
-        operator_stack.push(operator);
-        let next_operand = Self::parse_simple(walker, error_stream)?;
-        operand_stack.push(next_operand);
-    }
-    while let Some(operator) = operator_stack.pop(){
-        let right = operand_stack.pop().unwrap();
-        let left = operand_stack.pop().unwrap();
-        let expr = Expression(Box::new(ExpressionData::BinaryOperator(
-            BinaryOperator{
-                left,
-                right,
-                operator
-            }
-        )));
-        operand_stack.push(expr);
-    }
-    operand_stack.pop()
+	fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+	    // shunting yurd algorithm
+	    let mut operand_stack = vec![];
+	    let mut operator_stack = vec![];
+	    let first_operand = Self::parse_simple(walker, error_stream)?;
+	    operand_stack.push(first_operand);
+	    while let Some(operator) = walker.expect_operator_checked(
+	        Self::can_be_binary
+	    ){
+	        loop{
+	            if let Some(head) = operator_stack.pop(){
+	                if Self::is_precede(head, operator){
+	                    // cannot panic, since amount of operands always greater then amount of
+	                    // operators.
+	                    let right = operand_stack.pop().unwrap();
+	                    let left = operand_stack.pop().unwrap();
+	                    let expr = Expression(Box::new(ExpressionData::BinaryOperator(
+	                        BinaryOperator{
+	                            left,
+	                            right,
+	                            operator: head
+	                        }
+	                    )));
+	                    operand_stack.push(expr);
+	                }else{
+	                    operator_stack.push(head);
+	                    break;
+	                }
+	            }else{
+	                break;
+	            }
+	        }
+	        operator_stack.push(operator);
+	        let next_operand = Self::parse_simple(walker, error_stream)?;
+	        operand_stack.push(next_operand);
+	    }
+	    while let Some(operator) = operator_stack.pop(){
+	        let right = operand_stack.pop().unwrap();
+	        let left = operand_stack.pop().unwrap();
+	        let expr = Expression(Box::new(ExpressionData::BinaryOperator(
+	            BinaryOperator{
+	                left,
+	                right,
+	                operator
+	            }
+	        )));
+	        operand_stack.push(expr);
+	    }
+	    operand_stack.pop()
+	}
+
 }
+
+impl<'a> TreeItem<'a> for Expression<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        match self.0.as_ref(){
+            ExpressionData::SyffixOperator(x) => x.left.first_token(),
+            ExpressionData::PrefixOperator(x) => x.operator,
+            ExpressionData::BinaryOperator(x) => x.left.first_token(),
+            ExpressionData::FunctionCall(x) => x.name,
+            ExpressionData::Constant(x) => x,
+            ExpressionData::Variable(x) => x,
+            ExpressionData::Index(x) => x.expr.first_token()
+        }
+    }
 }
 
 

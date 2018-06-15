@@ -226,7 +226,7 @@ impl<'a> Compiler<'a>{
                 self.take_latest_expr();
                 res
             },
-            Statement::Return(e) => self.compile_return(&e),
+            Statement::Return(e) => self.compile_return(&e.expression),
             Statement::VariableDefinition(v) => self.compile_variable_definition(&v),
             Statement::ForLoop(l) => self.compile_for_loop(&l),
             Statement::Condition(c) => self.compile_condition(&c)
