@@ -110,7 +110,7 @@ macro_rules! html{
             write!($writer, "<span class=\"tab\"></span>")?;
         }
         html!{$writer, $context, $($c)*}
-        write!($writer, "</span>")?;
+        write!($writer, "</div>")?;
         html!{$writer, $context, $($t)*}
     };
     ($writer: expr, $context: expr, call{$c: expr} $($t: tt)*) => {
@@ -256,9 +256,11 @@ impl<'a> PageElement<'a> for Expression<'a>{
             ExpressionData::BinaryOperator(bin_op) => {
                 let brct_l = need_brackets_left(&bin_op.left, bin_op.operator);
                 let brct_r = need_brackets_right(bin_op.operator, &bin_op.right);
+                let op = str::replace(bin_op.operator.token_str(), "<", "&lt;")
+                    .replace(">", "&gt;");
                 html!{writer, context,
                     call{|w, c| write_expression_brackets(w, c, &bin_op.left, brct_l)}
-                    span(class="operator")[{bin_op.operator}]
+                    span(class="operator")[{op}]
                     call{|w, c| write_expression_brackets(w, c, &bin_op.right, brct_r)}
                 }
             },
