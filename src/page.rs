@@ -17,7 +17,9 @@ use syntax_tree::{
     ForLoopInitialization,
     Condition,
     Statement,
-    Type
+    Type,
+
+    TreeItem
 };
 use syntax_tree::Return;
 use compiler::DebugInfo;
@@ -137,12 +139,47 @@ macro_rules! html{
     };
     ($writer: expr, $context: expr, $tag: ident ($($i: ident = $value: expr)*) [$($t: tt)*] $($rest: tt)*) => {
         write!($writer, "<{} ", stringify!($tag))?;
-        $(write!($writer, "{} = \"{}\"", stringify!($i), $value)?;)*
+        $(
+        let opt_value: Option<_> = $value.into_option();
+        if let Some(value) = opt_value{
+            write!($writer, "{} = \"{}\"", stringify!($i), value)?;
+        }
+        )*
         write!($writer, ">")?;
         html!{$writer, $context, $($t)*}
         write!($writer, "</{}>", stringify!($tag))?;
         html!{$writer, $context, $($rest)*}
     };
+}
+
+
+trait IntoOption<T>{
+    fn into_option(self)->Option<T>;
+}
+
+
+impl IntoOption<String> for String{
+    fn into_option(self)->Option<String>{
+        Some(self)
+    }
+}
+
+impl IntoOption<String> for Option<String>{
+    fn into_option(self)->Option<String>{
+        self
+    }
+}
+
+impl<'a> IntoOption<&'a str> for &'a str{
+    fn into_option(self)->Option<&'a str>{
+        Some(self)
+    }
+}
+
+impl<'a> IntoOption<&'a str> for Option<&'a str>{
+    fn into_option(self)->Option<&'a str>{
+        self
+    }
 }
 
 
@@ -274,7 +311,6 @@ pub fn write_variable<'a, T: Write>(var: &'a TokenData<'a>, writer: &mut T, cont
     let var_offset = context.debug_info
         .and_then(|x| x.get_variable_offset(var))
         .map(|x| x.to_string());
-    println!("{:?}", context.debug_info);
     if let Some(var_offset) = var_offset {
         html! {writer, context,
             span(class="variable-name" data_var_offset=var_offset)[
@@ -385,9 +421,13 @@ impl<'a> PageElement<'a> for Block<'a>{
 
 impl<'a> PageElement<'a> for Statement<'a>{
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+        let offset = context.debug_info
+            .and_then(|x| x.get_statement_offset(self))
+            .map(|x| x.to_string());
+
         match self{
             Statement::Expression(e) => {html!{writer, context,
-                div(class="statement")[
+                div(class="statement" data_address=offset)[
                     tabs{
                         {e}
                         {";"}
@@ -395,7 +435,7 @@ impl<'a> PageElement<'a> for Statement<'a>{
                 ]
             }},
             Statement::VariableDefinition(vd) => {html!{writer, context,
-                div(class="statement")[
+                div(class="statement" data_address=offset)[
                     tabs{
                         {vd}
                         {";"}
@@ -403,7 +443,7 @@ impl<'a> PageElement<'a> for Statement<'a>{
                 ]
             }},
             Statement::Return(Return{expression: e, ..}) => {html!{writer, context,
-                div(class="statement")[
+                div(class="statement" data_address=offset)[
                     tabs{
                         span(class="keyword")[
                             {"return "}
@@ -427,13 +467,18 @@ impl<'a> PageElement<'a> for Statement<'a>{
 
 impl<'a> PageElement<'a> for Condition<'a>{
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+        let offset = context.debug_info
+            .and_then(|x| x.get_statement_offset_by_pos(self.first_token().get_pos()))
+            .map(|x| x.to_string());
         html!{writer, context,
-            tabs{
-                span(class="keyword")[{"if"}]
-                {"("}
-                {self.condition}
-                {"){"}
-            }
+            div(class="statement" data_address=offset)[
+                tabs{
+                    span(class="keyword")[{"if"}]
+                    {"("}
+                    {self.condition}
+                    {"){"}
+                }
+            ]
             {self.then}
         }
         let mut else_ = &self.else_;
@@ -443,14 +488,19 @@ impl<'a> PageElement<'a> for Condition<'a>{
         }else{
             &[]
         }{
+            let offset = context.debug_info
+                .and_then(|x| x.get_statement_offset_by_pos(cond.first_token().get_pos()))
+                .map(|x| x.to_string());
             html!{writer, context,
-                tabs{
-                    {"}"}
-                    span(class="keyword")[{"else if"}]
-                    {"()"}
-                    {cond.condition}
-                    {"){"}
-                }
+                div(class="statement" data_address=offset)[
+                    tabs{
+                        {"}"}
+                        span(class="keyword")[{"else if"}]
+                        {"()"}
+                        {cond.condition}
+                        {"){"}
+                    }
+                ]
                 {cond.then}
             }
             else_ = &cond.else_;
@@ -487,17 +537,22 @@ impl<'a> PageElement<'a> for ForLoopInitialization<'a> {
 
 impl<'a> PageElement<'a> for ForLoop<'a> {
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result<()> {
+        let offset = context.debug_info
+            .and_then(|x| x.get_statement_offset_by_pos(self.first_token().get_pos()))
+            .map(|x| x.to_string());
         html! {writer, context,
-            tabs{
-                span(class="keyword")[{"for"}]
-                {"("}
-                {self.init}
-                {";"}
-                {self.condition}
-                {";"}
-                {self.step}
-                {"){"}
-            }
+            div(class="statement" data_address=offset)[
+                tabs{
+                    span(class="keyword")[{"for"}]
+                    {"("}
+                    {self.init}
+                    {";"}
+                    {self.condition}
+                    {";"}
+                    {self.step}
+                    {"){"}
+                }
+            ]
             {self.body}
             tabs{{"}"}}
         };

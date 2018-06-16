@@ -197,6 +197,10 @@ impl DebugInfo{
     pub fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
         self.statements.get(&statement.first_token().get_pos()).map(|x| *x)
     }
+
+    pub fn get_statement_offset_by_pos<'a>(&self, pos: usize)->Option<usize>{
+        self.statements.get(&pos).map(|x| *x)
+    }
 }
 
 
