@@ -78,20 +78,23 @@ impl<'a> VariableManager<'a>{
         Self{
             namespaces: vec![],
             types: vec![],
-            definitions: vec![]
+            definitions: vec![],
         }
     }
 
     fn push(&mut self){
-        self.namespaces.push(HashMap::new())
+        self.namespaces.push(HashMap::new());
     }
 
     fn pop(&mut self)->Option<()>{
         self.namespaces.pop().map(|_| ())
     }
 
+    fn alloc_empty(&mut self){
+    }
+
     fn define_variable(&mut self, var: &'a Variable<'a>)->Result<usize, Error<'a>>{
-        let id = self.definitions.len();
+        let id = self.definitions.len() + 1;
         let name = var.name.token_str();
         let type_ = Type::from_type(&var.type_).or_else(|x|{
             Err(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, x.base))
@@ -117,6 +120,10 @@ impl<'a> VariableManager<'a>{
             }
         }
         None
+    }
+
+    fn get_type(&self, id: usize)->Type{
+        self.types[id-1].clone()
     }
 
     fn len(&self)->usize{
@@ -159,6 +166,7 @@ impl<'a> FunctionManager<'a>{
 }
 
 
+#[derive(Debug)]
 pub struct DebugInfo{
     /// Map from offset of variable reference to its offset in stack
     variables: HashMap<usize, usize>,
@@ -182,11 +190,11 @@ impl DebugInfo{
         self.statements.insert(statement.first_token().get_pos(), vm_offset);
     }
 
-    fn get_variable_offset<'a>(&self, name: &'a TokenData<'a>)->Option<usize>{
+    pub fn get_variable_offset<'a>(&self, name: &'a TokenData<'a>)->Option<usize>{
         self.variables.get(&name.get_pos()).map(|x| *x)
     }
 
-    fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
+    pub fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
         self.statements.get(&statement.first_token().get_pos()).map(|x| *x)
     }
 }
@@ -238,14 +246,18 @@ impl<'a> Compiler<'a>{
         self.current_function = Some(func);
         let start = self.operations.len();
         self.variables.push();
-        self.put_expr(); // reverse space for return value
+        self.variables.alloc_empty();
         let arguments_parsed = func.arguments.iter()
             .map(|v| {
-                if let Err(x) = self.variables.define_variable(v){
-                    self.errors.push(x);
-                    false
-                }else{
-                    true
+                match self.variables.define_variable(v){
+                    Ok(x) => {
+                        self.debug_info.reg_variable_offset(v.name, x);
+                        true
+                    },
+                    Err(x) => {
+                        self.errors.push(x);
+                        false
+                    }
                 }
             }).fold(true, |a, b| a && b);
         if arguments_parsed{
@@ -318,6 +330,7 @@ impl<'a> Compiler<'a>{
             code: Code::Clone,
             args: vec![from, id]
         });
+        self.debug_info.reg_variable_offset(var.name(), id);
         Some(())
     }
 
@@ -468,12 +481,13 @@ impl<'a> Compiler<'a>{
             self.errors.push(Error::from_token(ERROR_COMPILER_UNDEFINED_VARIABLE, var));
             None
         })?;
-        let type_ = self.variables.types[var_id];
+        let type_ = self.variables.get_type(var_id);
         let id = self.put_expr();
         self.operations.push(Operation{
             code: Code::PointerToLocal,
             args: vec![var_id, id]
         });
+        self.debug_info.reg_variable_offset(var, var_id);
         Some((type_, true))
     }
 

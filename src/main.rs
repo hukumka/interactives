@@ -94,14 +94,7 @@ fn main() {
             panic!("Execution aborted due to present error.")
         }
     };
-    // build html page
-    println!("Build HTML page.");
-    let mut output = File::create(output).unwrap();
-    let mut context = Context::new();
-    for r in &syntax_tree{
-        r.write_page(&mut output, &mut context).unwrap();
-    }
-    output.sync_all().unwrap();
+
 
     // compile
     println!("Write compiled");
@@ -132,4 +125,14 @@ fn main() {
     }else {
         Error::print_errors(compiler.errors(), &line_starts);
     }
+
+    // build html page
+    println!("Build HTML page.");
+    let mut output = File::create(output).unwrap();
+    let mut context = Context::new();
+    context.set_debug_info(compiler.get_debug_info());
+    for r in &syntax_tree{
+        r.write_page(&mut output, &mut context).unwrap();
+    }
+    output.sync_all().unwrap();
 }

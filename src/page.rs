@@ -20,16 +20,26 @@ use syntax_tree::{
     Type
 };
 use syntax_tree::Return;
+use compiler::DebugInfo;
 
 
 pub struct Context<'a>{
+    debug_info: Option<&'a DebugInfo>,
     variables: Vec<HashMap<&'a str, usize>>,
     size: usize
 }
 
 impl<'a> Context<'a>{
     pub fn new()->Self{
-        Self{variables: vec![HashMap::new()], size: 0}
+        Self{
+            debug_info: None,
+            variables: vec![HashMap::new()],
+            size: 0
+        }
+    }
+
+    pub fn set_debug_info(&mut self, debug_info: &'a DebugInfo){
+        self.debug_info = Some(debug_info);
     }
 
     fn push(&mut self){
@@ -93,7 +103,7 @@ macro_rules! html{
         html!{$writer, $context, $($t)*}
     };
     ($writer: expr, $context: expr, tabs{$($c: tt)*} $($t: tt)*) => {
-        write!($writer, "<span class=\"tabs\">")?;
+        write!($writer, "<div class=\"tabs\">")?;
         for _ in 0..$context.level(){
             write!($writer, "<span class=\"tab\"></span>")?;
         }
@@ -174,9 +184,7 @@ impl<'a> PageElement<'a> for Variable<'a>{
             span(class="variable")[
                 {self.type_}
                 {" "}
-                span(class="variable-name")[
-                    {self.name}
-                ]
+                call{|w, c| write_variable(self.name, w, c)}
             ]
         };
         Ok(())
@@ -248,11 +256,7 @@ impl<'a> PageElement<'a> for Expression<'a>{
                 }
             },
             ExpressionData::Variable(var) => {
-                html!{writer, context,
-                    span(class="variable-name")[
-                        {var}
-                    ]
-                }
+                write_variable(var, writer, context)?;
             },
             ExpressionData::Constant(c) => {
                 html! {writer, context,
@@ -264,6 +268,27 @@ impl<'a> PageElement<'a> for Expression<'a>{
         };
         Ok(())
     }
+}
+
+pub fn write_variable<'a, T: Write>(var: &'a TokenData<'a>, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    let var_offset = context.debug_info
+        .and_then(|x| x.get_variable_offset(var))
+        .map(|x| x.to_string());
+    println!("{:?}", context.debug_info);
+    if let Some(var_offset) = var_offset {
+        html! {writer, context,
+            span(class="variable-name" data_var_offset=var_offset)[
+                {var}
+            ]
+        }
+    }else {
+        html! {writer, context,
+            span(class="variable-name")[
+                {var}
+            ]
+        }
+    }
+    Ok(())
 }
 
 pub fn need_brackets_right<'a>(op: &'a TokenData<'a>, expr: &'a Expression<'a>)->bool{
