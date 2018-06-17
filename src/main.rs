@@ -19,6 +19,7 @@ mod types;
 
 use std::fs::File;
 use std::io::Read;
+use std::io::Write;
 
 use clap::{
     Arg,
@@ -33,7 +34,10 @@ use page::{
     PageElement,
     Context
 };
-use compiler::Compiler;
+use compiler::{
+    Compiler,
+    Operation,
+};
 use error::Error;
 
 fn main() {
@@ -110,29 +114,72 @@ fn main() {
             }
         }
     }
-    let res = syntax_tree.iter()
-        .filter_map(|x|{
-            match x{
-                Root::FunctionDefinition(x) => Some(x),
-                _ => None
-            }
-        })
-        .map(|x| compiler.compile_function(x))
-        .fold(res, |a, b| a.and(b));
 
-    if let Some(_) = res{
-        compiler.print();
+    let res: Option<Vec<_>> = res.and_then(|_|{
+        syntax_tree.iter()
+            .filter_map(|x|{
+                match x{
+                    Root::FunctionDefinition(x) => Some(x),
+                    _ => None
+                }
+            })
+            .map(|x| compiler.compile_function(x))
+            .collect()
+    });
+
+    let function_entry_points: Vec<(usize, usize)> = if let Some(res) = res{
+        //compiler.print();
+        res.iter().map(|x| *x).enumerate().collect()
     }else {
         Error::print_errors(compiler.errors(), &line_starts);
-    }
+        return;
+    };
 
     // build html page
     println!("Build HTML page.");
-    let mut output = File::create(output).unwrap();
+    let mut out = File::create(output).unwrap();
     let mut context = Context::new();
     context.set_debug_info(compiler.get_debug_info());
     for r in &syntax_tree{
-        r.write_page(&mut output, &mut context).unwrap();
+        r.write_page(&mut out, &mut context).unwrap();
     }
-    output.sync_all().unwrap();
+    out.sync_all().unwrap();
+
+    // build js code
+    println!("Build HTML page.");
+    let mut out= File::create(output.to_string() + ".js").unwrap();
+    write_compiled_to_js(&mut out, &compiler, function_entry_points.as_slice()).unwrap();
+    out.sync_all().unwrap();
+
+}
+
+
+fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, function_entry_points: &[(usize, usize)])->std::io::Result<()>{
+    write!(writer, "var compiled = {{commands: [")?;
+    let mut iter = compiler.code().iter();
+    if let Some(op) = iter.next(){
+        write_operation_to_js(writer, op)?;
+    }
+    for op in iter{
+        write!(writer, ",")?;
+        write_operation_to_js(writer, op)?;
+    }
+    write!(writer, "], function_enters: [")?;
+    let mut iter = function_entry_points.iter();
+    if let Some((fid, entry)) = iter.next(){
+        write!(writer, "[{}, {}]", fid, entry)?;
+    }
+    for (fid, entry) in iter {
+        write!(writer, ",[{}, {}]", fid, entry)?;
+    }
+    write!(writer, "]}}")?;
+    Ok(())
+}
+
+fn write_operation_to_js<T: Write>(writer: &mut T, operation: &Operation)->std::io::Result<()>{
+    write!(writer, "[{}", operation.code as usize)?;
+    for arg in &operation.args{
+        write!(writer, ", {}", arg)?;
+    }
+    write!(writer, "]")
 }

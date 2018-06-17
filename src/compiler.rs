@@ -28,7 +28,7 @@ use types::{
 };
 
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Code {
     Jump,
     JumpZ,
@@ -58,12 +58,15 @@ pub enum Code {
 
     Return,
     Call,
+
+    AddSp,
+    SubSb,
 }
 
 #[derive(Debug)]
-struct Operation{
-    code: Code,
-    args: Vec<usize>,
+pub struct Operation{
+    pub code: Code,
+    pub args: Vec<usize>,
 }
 
 
@@ -226,6 +229,10 @@ impl<'a> Compiler<'a>{
             debug_info: DebugInfo::new(),
             errors: vec![],
         }
+    }
+
+    pub fn code(&self)->&[Operation]{
+        self.operations.as_slice()
     }
 
     pub fn get_debug_info(&self)->&DebugInfo{
@@ -539,15 +546,23 @@ impl<'a> Compiler<'a>{
         })?;
         let type_ = self.functions.types[func_id].clone();
         if func.arguments.len() == type_.args.len(){
-            self.put_expr(); // reserve space for result
+            let sp_offset = self.put_expr(); // reserve space for result
             let res = func.arguments.iter()
                 .zip(&type_.args)
                 .map(|(arg, type_)| self.compile_expression_of_type(arg, *type_))
                 .fold(Some(()), |a, b| a.and(b));
             self.temp_values -= func.arguments.len() + 1;
             self.operations.push(Operation{
+                code: Code::AddSp,
+                args: vec![sp_offset]
+            });
+            self.operations.push(Operation{
                 code: Code::Call,
                 args: vec![func_id]
+            });
+            self.operations.push(Operation{
+                code: Code::SubSb,
+                args: vec![sp_offset]
             });
             res.map(|_| (type_.ret, false))
         }else{
