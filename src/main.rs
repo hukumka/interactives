@@ -145,8 +145,8 @@ fn main() {
     }
     out.sync_all().unwrap();
 
-    // build js code
-    println!("Build HTML page.");
+    // build vm code
+    println!("Build VM page.");
     let mut out= File::create(output.to_string() + ".js").unwrap();
     write_compiled_to_js(&mut out, &compiler, function_entry_points.as_slice()).unwrap();
     out.sync_all().unwrap();

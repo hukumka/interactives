@@ -30,8 +30,11 @@ use types::{
 
 #[derive(Debug, Copy, Clone)]
 pub enum Code {
+    /// Unconditional jump to args[0]
     Jump,
+    /// Jump to args[0] if value in cell args[1] == 0
     JumpZ,
+    /// Jump to args[0] if values in cell args[1] != 0
     JumpNZ,
 
     Eq,
@@ -94,6 +97,9 @@ impl<'a> VariableManager<'a>{
     }
 
     fn alloc_empty(&mut self){
+        self.namespaces.clear();
+        self.types.clear();
+        self.definitions.clear();
     }
 
     fn define_variable(&mut self, var: &'a Variable<'a>)->Result<usize, Error<'a>>{
@@ -130,7 +136,7 @@ impl<'a> VariableManager<'a>{
     }
 
     fn len(&self)->usize{
-        self.namespaces.iter().map(|x| x.len()).sum()
+        self.namespaces.iter().map(|x| x.len()).sum::<usize>() + 1
     }
 }
 
@@ -256,8 +262,9 @@ impl<'a> Compiler<'a>{
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>)->Option<usize>{
         self.current_function = Some(func);
         let start = self.operations.len();
-        self.variables.push();
         self.variables.alloc_empty();
+        self.variables.push();
+        self.temp_values = 0;
         let arguments_parsed = func.arguments.iter()
             .map(|v| {
                 match self.variables.define_variable(v){
@@ -273,10 +280,16 @@ impl<'a> Compiler<'a>{
             }).fold(true, |a, b| a && b);
         if arguments_parsed{
             self.compile_block(&func.body)?;
+            self.operations.push(Operation{
+                code: Code::Return,
+                args: vec![]
+            });
             self.current_function = None;
+            self.variables.pop().unwrap();
             Some(start)
         }else{
             self.current_function = None;
+            self.variables.pop().unwrap();
             None
         }
     }
@@ -320,7 +333,7 @@ impl<'a> Compiler<'a>{
         let id = self.take_latest_expr();
         self.operations.push(Operation{
             code: Code::Clone,
-            args: vec![id, 0]
+            args: vec![0, id]
         });
         self.operations.push(Operation{
             code: Code::Return,
@@ -339,7 +352,7 @@ impl<'a> Compiler<'a>{
         let from = self.take_latest_expr();
         self.operations.push(Operation{
             code: Code::Clone,
-            args: vec![from, id]
+            args: vec![id, from]
         });
         self.debug_info.reg_variable_offset(var.name(), id);
         Some(())
@@ -395,6 +408,8 @@ impl<'a> Compiler<'a>{
             self.operations[jump_op].args[0] = self.operations.len(); // set jump address to after begining of else block
             succ = succ.and(self.compile_block(else_));
             self.operations[second_jump_op].args[0] = self.operations.len(); // set jump to end of
+        }else{
+            self.operations[jump_op].args[0] = self.operations.len(); // set jump address to after begining of else block
         }
         succ
     }
@@ -496,7 +511,7 @@ impl<'a> Compiler<'a>{
         let id = self.put_expr();
         self.operations.push(Operation{
             code: Code::PointerToLocal,
-            args: vec![var_id, id]
+            args: vec![id, var_id]
         });
         self.debug_info.reg_variable_offset(var, var_id);
         Some((type_, true))
@@ -513,7 +528,7 @@ impl<'a> Compiler<'a>{
         let id = self.put_expr();
         self.operations.push(Operation{
             code: Code::ConstInt,
-            args: vec![i, id]
+            args: vec![id, i]
         });
         Some((Type::int(), false))
     }
