@@ -454,12 +454,12 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_expression_prefix_op(&mut self, op: &'a PrefixOperator<'a>)->Option<(Type, bool)>{
-        let id = self.take_latest_expr();
-        let _res_id = self.put_expr();
         match op.operator.token_str(){
             x if x == "--" || x == "++" => {
                 let (type_, is_rvalue) = self.compile_expression(&op.right)?;
-                if is_rvalue && type_ == Type::int() || type_.pointer_count > 0 {
+                let id = self.take_latest_expr();
+                let _res_id = self.put_expr();
+                if is_rvalue && (type_ == Type::int() || type_.pointer_count > 0) {
                     if x == "--"{
                         self.operations.push(Operation {
                             code: Code::Dec,
@@ -479,6 +479,8 @@ impl<'a> Compiler<'a>{
             },
             "&" => {
                 let (type_, is_rvalue) = self.compile_expression(&op.right)?;
+                let id = self.take_latest_expr();
+                let _res_id = self.put_expr();
                 if is_rvalue{
                     Some((type_.pointer(), false))
                 }else{
@@ -488,6 +490,8 @@ impl<'a> Compiler<'a>{
             },
             "*" => {
                 let type_ = self.compile_expression_rvalue(&op.right)?;
+                let id = self.take_latest_expr();
+                let _res_id = self.put_expr();
                 if let Some(type_) = type_.dereference(){
                     Some((type_, true))
                 }else{

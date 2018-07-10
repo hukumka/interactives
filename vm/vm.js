@@ -115,13 +115,15 @@ function VM(code, functions){
     // inc
     this.operation_names[12] = "INC";
     this.operations[12] = function(args){
-        self.data[self.sp + args[1]]++;
+        var pointer = self.data[self.sp + args[1]];
+        self.data[pointer]++;
         self.ip++;
     }
     // dec
     this.operation_names[13] = "DEC";
     this.operations[13] = function(args){
-        self.data[self.sp + args[1]]--;
+        var pointer = self.data[self.sp + args[1]];
+        self.data[pointer]--;
         self.ip++;
     }
     // dereference
@@ -135,7 +137,7 @@ function VM(code, functions){
     this.operation_names[15] = "PTR_SET";
     this.operations[15] = function(args){
         var pointer = self.data[self.sp + args[1]];
-        self.data[pointer] = self.data[self.sp + args[1]];
+        self.data[pointer] = self.data[self.sp + args[2]];
         self.ip++;
     }
     // Nop
