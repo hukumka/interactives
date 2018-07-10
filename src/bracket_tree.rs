@@ -4,83 +4,83 @@ use error::bracket_tree_parser::*;
 
 
 pub struct BracketTree<'a>{
-/// tokens
-data: &'a [TokenData<'a>],
-/// depth of current bracket layer in tree; 
-/// 
-/// brackets lay on same layer as everything outside
-/// them, everything inside them lay one layer deeper
-depth_marker: Vec<usize>,
-/// position of closing bracket for current layer in tree
-bracket_end: Vec<usize>,
+	/// tokens
+	data: &'a [TokenData<'a>],
+	/// depth of current bracket layer in tree; 
+	/// 
+	/// brackets lay on same layer as everything outside
+	/// them, everything inside them lay one layer deeper
+	depth_marker: Vec<usize>,
+	/// position of closing bracket for current layer in tree
+	bracket_end: Vec<usize>,
 }
 
 impl<'a> BracketTree<'a>{
-pub fn new(data: &'a [TokenData<'a>])->Result<Self, Error>{
-    let mut depth_marker = vec![0; data.len()];
-    let mut bracket_end = vec![0; data.len()];
-
-    let mut current_depth = 0; // holding depth of current layer
-    let mut current_bracket_end = data.len(); // holding position of closing bracket for current layer, or data.len() for root layer
-
-    // going in reverse to get closing bracket for each position easier.
-    for (i, token) in data.iter().enumerate().rev(){
-        match token.get_type(){
-            TokenType::Bracket if is_close_bracket(token.token_str()) => {
-                // marking bracket
-                depth_marker[i] = current_depth;
-                bracket_end[i] = current_bracket_end;
-                // entering new layer ending with found bracket
-                current_depth+=1;
-                current_bracket_end = i;
-            },
-            TokenType::Bracket if is_open_bracket(token.token_str()) => {
-                // leaving bracket pair
-                if current_depth == 0 {
-                    return Err(Error::new(token.code(), ERROR_UNCLOSED_BRACKET, token.get_interval().0));
-                }
-                if !are_brackets_match(token.token_str(), data[current_bracket_end].token_str()){
-                    return Err(Error::new(token.code(), ERROR_BRACKET_DONT_MATCH, token.get_interval().0));
-                }
-                // leaving layer
-                current_depth-=1;
-                current_bracket_end = if current_bracket_end + 1 == data.len(){
-                    data.len()
-                }else{
-                    bracket_end[current_bracket_end]
-                };
-                // marking opening bracket
-                depth_marker[i] = current_depth;
-                bracket_end[i] = current_bracket_end;
-            },
-            _ => {
-                // marking non-bracket element
-                depth_marker[i] = current_depth;
-                bracket_end[i] = current_bracket_end;
-            }
-        }
-    }
-    if current_bracket_end < data.len(){
-        Err(Error::new(
-            data[current_bracket_end].code(), 
-            ERROR_TO_MANY_CLOSING_BRACKETS, 
-            data[current_bracket_end].get_interval().0
-        ))
-    }else{
-        Ok(Self{data, depth_marker, bracket_end})
-    }
-}
-
-pub fn walker(&'a self)->BracketTreeWalker<'a>{
-    BracketTreeWalker{pos: 0, end: self.data.len(), tree: self}
-}
+	pub fn new(data: &'a [TokenData<'a>])->Result<Self, Error>{
+	    let mut depth_marker = vec![0; data.len()];
+	    let mut bracket_end = vec![0; data.len()];
+	
+	    let mut current_depth = 0; // holding depth of current layer
+	    let mut current_bracket_end = data.len(); // holding position of closing bracket for current layer, or data.len() for root layer
+	
+	    // going in reverse to get closing bracket for each position easier.
+	    for (i, token) in data.iter().enumerate().rev(){
+	        match token.get_type(){
+	            TokenType::Bracket if is_close_bracket(token.token_str()) => {
+	                // marking bracket
+	                depth_marker[i] = current_depth;
+	                bracket_end[i] = current_bracket_end;
+	                // entering new layer ending with found bracket
+	                current_depth+=1;
+	                current_bracket_end = i;
+	            },
+	            TokenType::Bracket if is_open_bracket(token.token_str()) => {
+	                // leaving bracket pair
+	                if current_depth == 0 {
+	                    return Err(Error::new(token.code(), ERROR_UNCLOSED_BRACKET, token.get_interval().0));
+	                }
+	                if !are_brackets_match(token.token_str(), data[current_bracket_end].token_str()){
+	                    return Err(Error::new(token.code(), ERROR_BRACKET_DONT_MATCH, token.get_interval().0));
+	                }
+	                // leaving layer
+	                current_depth-=1;
+	                current_bracket_end = if current_bracket_end + 1 == data.len(){
+	                    data.len()
+	                }else{
+	                    bracket_end[current_bracket_end]
+	                };
+	                // marking opening bracket
+	                depth_marker[i] = current_depth;
+	                bracket_end[i] = current_bracket_end;
+	            },
+	            _ => {
+	                // marking non-bracket element
+	                depth_marker[i] = current_depth;
+	                bracket_end[i] = current_bracket_end;
+	            }
+	        }
+	    }
+	    if current_bracket_end < data.len(){
+	        Err(Error::new(
+	            data[current_bracket_end].code(), 
+	            ERROR_TO_MANY_CLOSING_BRACKETS, 
+	            data[current_bracket_end].get_interval().0
+	        ))
+	    }else{
+	        Ok(Self{data, depth_marker, bracket_end})
+	    }
+	}
+	
+	pub fn walker(&'a self)->BracketTreeWalker<'a>{
+	    BracketTreeWalker{pos: 0, end: self.data.len(), tree: self}
+	}
 }
 
 #[derive(Clone)]
 pub struct BracketTreeWalker<'a>{
-pos: usize,
-end: usize,
-tree: &'a BracketTree<'a>
+	pos: usize,
+	end: usize,
+	tree: &'a BracketTree<'a>
 }
 
 impl<'a> BracketTreeWalker<'a>{
@@ -129,7 +129,7 @@ impl<'a> BracketTreeWalker<'a>{
     }
 
     /// Returns `TokenData` corresponding to operator if it is next token, and move to next.
-    pub fn _expect_operator(&mut self)->Option<&'a TokenData<'a>>{
+    pub fn expect_operator(&mut self)->Option<&'a TokenData<'a>>{
         self.expect_token_of_type_checked(TokenType::Operator, |_| true)
     }
 

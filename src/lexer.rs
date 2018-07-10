@@ -1,3 +1,43 @@
+//! This is lexing module
+//! 
+//! 
+//! # Examples
+//! 
+//! ```
+//! let code = "int main(){return 0;}";
+//! let preprocessor = Preprocessor::new(code);
+//! let tokens = preprocessor.tokenize().unwrap();
+//! assert_eq!(tokens.len(), 9);
+//! 
+//! assert_eq!(tokens[0].get_type(), TokenType::Name);
+//! assert_eq!(tokens[0].token_str(), "int");
+//! 
+//! assert_eq!(tokens[1].get_type(), TokenType::Name);
+//! assert_eq!(tokens[1].token_str(), "main");
+//! 
+//! assert_eq!(tokens[2].get_type(), TokenType::Bracket);
+//! assert_eq!(tokens[2].token_str(), "(");
+//! 
+//! assert_eq!(tokens[3].get_type(), TokenType::Bracket);
+//! assert_eq!(tokens[3].token_str(), ")");
+//! 
+//! assert_eq!(tokens[4].get_type(), TokenType::Bracket);
+//! assert_eq!(tokens[4].token_str(), "{");
+//! 
+//! assert_eq!(tokens[5].get_type(), TokenType::Name);
+//! assert_eq!(tokens[5].token_str(), "return");
+//! 
+//! assert_eq!(tokens[6].get_type(), TokenType::Value);
+//! assert_eq!(tokens[6].token_str(), "0");
+//! 
+//! assert_eq!(tokens[7].get_type(), TokenType::Operator);
+//! assert_eq!(tokens[7].token_str(), ";");
+//! 
+//! assert_eq!(tokens[8].get_type(), TokenType::Bracket);
+//! assert_eq!(tokens[8].token_str(), "}");
+//! ```
+
+
 use std::fmt;
 use std::iter::Peekable;
 use std::str::CharIndices;

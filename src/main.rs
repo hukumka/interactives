@@ -40,6 +40,7 @@ use compiler::{
 };
 use error::Error;
 
+
 fn main() {
     env_logger::init();
 
@@ -154,6 +155,17 @@ fn main() {
 }
 
 
+/// Write virtual machine (vm/vm.js) bytecode of compiled code into writer
+/// 
+/// # Arguments
+/// 
+/// * `writer` - buffer into which code will be writter. May be `std::fs::File`
+/// 
+/// * `compiler` - instance of `Compiler`, which compiled syntax tree into code
+/// 
+/// * `function_entry_points` - array of pairs (function_id, function_start) where function_id is
+/// id of compiled function provided by `compiler` and function_start - offset of function entry
+/// point in compiled bytecode
 fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, function_entry_points: &[(usize, usize)])->std::io::Result<()>{
     write!(writer, "var compiled = {{commands: [")?;
     let mut iter = compiler.code().iter();
@@ -176,6 +188,7 @@ fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, f
     Ok(())
 }
 
+/// Write a single `Operation` into javascript representation of vm bytecode
 fn write_operation_to_js<T: Write>(writer: &mut T, operation: &Operation)->std::io::Result<()>{
     write!(writer, "[{}", operation.code as usize)?;
     for arg in &operation.args{
