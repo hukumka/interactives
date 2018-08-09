@@ -4,6 +4,7 @@ function VM(code, functions){
     this.code = code;
     this.functions = functions;
     this.breakpoints = [];
+    this.break_on_return = false;
     this.data = [];
     this.return_stack = [];
 
@@ -12,7 +13,8 @@ function VM(code, functions){
     this.run = function(){
         while(true){
             var command = this.code[this.ip];
-            var res = this.operations[command[0]](command);
+            var command_id = command[0];
+            var res = this.operations[command_id](command);
             if(res !== undefined){
                 this.reset();
                 return res;
@@ -21,6 +23,43 @@ function VM(code, functions){
                 break;
             }
         }
+    }
+
+    this.step = function(statements){
+        var range = this.current_function_range()
+        var statements = statements.filter(x => range[0] <= x && x < range[1])
+        var depth = this.return_stack.length;
+        while(true){
+            var command = this.code[this.ip];
+            var command_id = command[0];
+            var res = this.operations[command_id](command);
+            if(res !== undefined){
+                this.reset();
+                return res;
+            }
+            if(this.return_stack.length == depth && statements.includes(this.ip)){
+                break;
+            }
+            if(this.return_stack.length < depth){
+                break;
+            }
+            if(this.breakpoints.includes(this.ip)){
+                break;
+            }
+        }
+    };
+
+    this.current_function_range = function(){
+        for(var i=0; i<this.functions.length-1; ++i){
+            if(this.functions[i][1] <= this.ip && this.functions[i+1][1] > this.ip){
+                return [this.functions[i][1], this.functions[i+1][1]]
+            }
+        }
+        return [this.functions[this.functions.length-1][1], this.code.length]
+    }
+
+    this.get_local_variable = function(id){
+        return this.data[this.sp + id]
     }
 
     this.reset = function(){
@@ -135,7 +174,7 @@ function VM(code, functions){
     this.operation_names[15] = "PTR_SET";
     this.operations[15] = function(args){
         var pointer = self.data[self.sp + args[1]];
-        self.data[pointer] = self.data[self.sp + args[1]];
+        self.data[pointer] = self.data[self.sp + args[2]];
         self.ip++;
     }
     // Nop

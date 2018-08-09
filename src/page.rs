@@ -1,4 +1,4 @@
-use std::io::{
+use std::fmt::{
     Write,
     Result
 };
@@ -28,7 +28,8 @@ use compiler::DebugInfo;
 pub struct Context<'a>{
     debug_info: Option<&'a DebugInfo>,
     variables: Vec<HashMap<&'a str, usize>>,
-    size: usize
+    size: usize,
+    current_line: usize,
 }
 
 impl<'a> Context<'a>{
@@ -36,7 +37,8 @@ impl<'a> Context<'a>{
         Self{
             debug_info: None,
             variables: vec![HashMap::new()],
-            size: 0
+            size: 0,
+            current_line: 0,
         }
     }
 
@@ -67,30 +69,30 @@ impl<'a> Context<'a>{
 
 
 pub trait PageElement<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>;
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result;
 }
 trait PageElementReplacement{
-    fn write_page<T: Write>(&self, writer: &mut T, context: &mut Context)->Result<()>;
+    fn write_page<T: Write>(&self, writer: &mut T, context: &mut Context)->Result;
 }
 trait PageElementFunc<T: Write>{
-    fn write_page(self, writer: &mut T, context: &mut Context)->Result<()>;
+    fn write_page(self, writer: &mut T, context: &mut Context)->Result;
 }
 
 
 impl PageElementReplacement for String{
-    fn write_page<T: Write>(&self, writer: &mut T, _context: &mut Context)->Result<()>{
+    fn write_page<T: Write>(&self, writer: &mut T, _context: &mut Context)->Result{
         write!(writer, "{}", self)?;
         Ok(())
     }
 }
 impl<'a> PageElementReplacement for &'a str{
-    fn write_page<T: Write>(&self, writer: &mut T, _: &mut Context)->Result<()>{
+    fn write_page<T: Write>(&self, writer: &mut T, _: &mut Context)->Result{
         write!(writer, "{}", self)?;
         Ok(())
     }
 }
-impl<T: Write, Func: FnOnce(&mut T, &mut Context)->Result<()>> PageElementFunc<T> for Func{
-    fn write_page(self, writer: &mut T, context: &mut Context)->Result<()>{
+impl<T: Write, Func: FnOnce(&mut T, &mut Context)->Result> PageElementFunc<T> for Func{
+    fn write_page(self, writer: &mut T, context: &mut Context)->Result{
         self(writer, context)
     }
 }
@@ -105,12 +107,26 @@ macro_rules! html{
         html!{$writer, $context, $($t)*}
     };
     ($writer: expr, $context: expr, tabs{$($c: tt)*} $($t: tt)*) => {
-        write!($writer, "<div class=\"tabs\">")?;
+        write!($writer, "<span class=\"tabs\">")?;
         for _ in 0..$context.level(){
             write!($writer, "<span class=\"tab\"></span>")?;
         }
         html!{$writer, $context, $($c)*}
-        write!($writer, "</div>")?;
+        write!($writer, "</span>")?;
+        html!{$writer, $context, $($t)*}
+    };
+    ($writer: expr, $context: expr, line{$offset: expr} $($t: tt)*) => {
+        if let Some(addr) = $offset{
+            write!($writer, "<span class=\"line-number\" data_address=\"{}\">{}</span>", addr, $context.current_line)?;
+        }else{
+            write!($writer, "<span class=\"line-number\">{}</span>", $context.current_line)?;
+        }
+        $context.current_line += 1;
+        html!{$writer, $context, $($t)*}
+    };
+    ($writer: expr, $context: expr, line{} $($t: tt)*) => {
+        write!($writer, "<span class=\"line-number\">{}</span>", $context.current_line)?;
+        $context.current_line += 1;
         html!{$writer, $context, $($t)*}
     };
     ($writer: expr, $context: expr, call{$c: expr} $($t: tt)*) => {
@@ -184,7 +200,7 @@ impl<'a> IntoOption<&'a str> for Option<&'a str>{
 
 
 impl<'a> PageElement<'a> for Root<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         match self{
             Root::VariableDefinition(ref vd) => {
                 html!{writer, context,
@@ -203,7 +219,7 @@ impl<'a> PageElement<'a> for Root<'a>{
 
 
 impl<'a> PageElement<'a> for VariableDefinition<'a> {
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result<()> {
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result {
         html!{ writer, context,
             span(class="variable-definition")[
                 {self.variable}
@@ -216,7 +232,7 @@ impl<'a> PageElement<'a> for VariableDefinition<'a> {
 }
 
 impl<'a> PageElement<'a> for Variable<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         html!{ writer, context,
             span(class="variable")[
                 {self.type_}
@@ -230,7 +246,7 @@ impl<'a> PageElement<'a> for Variable<'a>{
 
 
 impl<'a> PageElement<'a> for Type<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         html!{writer, context,
             span(class="c-type")[
                 {self.base}
@@ -243,7 +259,7 @@ impl<'a> PageElement<'a> for Type<'a>{
 
 
 impl<'a> PageElement<'a> for TokenData<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, _context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, _context: &mut Context<'a>)->Result{
         write!(writer, "{}", self.token_str())?;
         Ok(())
     }
@@ -251,7 +267,7 @@ impl<'a> PageElement<'a> for TokenData<'a>{
 
 
 impl<'a> PageElement<'a> for Expression<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         match self.0.as_ref(){
             ExpressionData::BinaryOperator(bin_op) => {
                 let brct_l = need_brackets_left(&bin_op.left, bin_op.operator);
@@ -309,7 +325,7 @@ impl<'a> PageElement<'a> for Expression<'a>{
     }
 }
 
-pub fn write_variable<'a, T: Write>(var: &'a TokenData<'a>, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+pub fn write_variable<'a, T: Write>(var: &'a TokenData<'a>, writer: &mut T, context: &mut Context<'a>)->Result{
     let var_offset = context.debug_info
         .and_then(|x| x.get_variable_offset(var))
         .map(|x| x.to_string());
@@ -366,7 +382,7 @@ pub fn need_brackets_syffix<'a>(expr: &'a Expression<'a>)->bool{
 
 
 
-fn write_expression_brackets<'a, T: Write>(writer: &mut T, context: &mut Context<'a>, expr: &'a Expression<'a>, need_brackets: bool)->Result<()>{
+fn write_expression_brackets<'a, T: Write>(writer: &mut T, context: &mut Context<'a>, expr: &'a Expression<'a>, need_brackets: bool)->Result{
     if need_brackets{
         html!{writer, context,
             span(class="expr-bracket")[{"("}]
@@ -383,10 +399,11 @@ fn write_expression_brackets<'a, T: Write>(writer: &mut T, context: &mut Context
 
 
 impl<'a> PageElement<'a> for FunctionDefinition<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         html!{writer, context,
             div(class="function-definition")[
-                div(class="function-head")[
+                line{}
+                span(class="function-head")[
                     {self.return_type}
                     {" "}
                     span(class="function-name")[
@@ -401,6 +418,7 @@ impl<'a> PageElement<'a> for FunctionDefinition<'a>{
                     {self.body}
                 ]
 
+                line{}
                 span(class="operator")[{"}"}]
             ]
         }
@@ -410,7 +428,7 @@ impl<'a> PageElement<'a> for FunctionDefinition<'a>{
 
 
 impl<'a> PageElement<'a> for Block<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         context.push();
         html!{writer, context,
             seq{self.statements.as_slice()}
@@ -422,14 +440,15 @@ impl<'a> PageElement<'a> for Block<'a>{
 
 
 impl<'a> PageElement<'a> for Statement<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         let offset = context.debug_info
             .and_then(|x| x.get_statement_offset(self))
             .map(|x| x.to_string());
 
         match self{
             Statement::Expression(e) => {html!{writer, context,
-                div(class="statement" data_address=offset)[
+                div(class="statement" data_address=offset.clone())[
+                    line{offset}
                     tabs{
                         {e}
                         {";"}
@@ -437,7 +456,8 @@ impl<'a> PageElement<'a> for Statement<'a>{
                 ]
             }},
             Statement::VariableDefinition(vd) => {html!{writer, context,
-                div(class="statement" data_address=offset)[
+                div(class="statement" data_address=offset.clone())[
+                    line{offset}
                     tabs{
                         {vd}
                         {";"}
@@ -445,7 +465,8 @@ impl<'a> PageElement<'a> for Statement<'a>{
                 ]
             }},
             Statement::Return(Return{expression: e, ..}) => {html!{writer, context,
-                div(class="statement" data_address=offset)[
+                div(class="statement" data_address=offset.clone())[
+                    line{offset}
                     tabs{
                         span(class="keyword")[
                             {"return "}
@@ -468,12 +489,13 @@ impl<'a> PageElement<'a> for Statement<'a>{
 
 
 impl<'a> PageElement<'a> for Condition<'a>{
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result<()>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         let offset = context.debug_info
             .and_then(|x| x.get_statement_offset_by_pos(self.first_token().get_pos()))
             .map(|x| x.to_string());
         html!{writer, context,
-            div(class="statement" data_address=offset)[
+            div(class="statement" data_address=offset.clone())[
+                line{offset}
                 tabs{
                     span(class="keyword")[{"if"}]
                     {"("}
@@ -494,7 +516,8 @@ impl<'a> PageElement<'a> for Condition<'a>{
                 .and_then(|x| x.get_statement_offset_by_pos(cond.first_token().get_pos()))
                 .map(|x| x.to_string());
             html!{writer, context,
-                div(class="statement" data_address=offset)[
+                div(class="statement" data_address=offset.clone())[
+                    line{offset}
                     tabs{
                         {"}"}
                         span(class="keyword")[{"else if"}]
@@ -509,17 +532,18 @@ impl<'a> PageElement<'a> for Condition<'a>{
         }
         if let Some(else_) = else_{
             html!{writer, context,
+                line{}
                 tabs{
                     {"}"}
                     span(class="keyword")[{"else"}]
                     {"{"}
                 }
                 {else_}
-                tabs{{"}"}}
+                line{}tabs{{"}"}}
             }
         }else{
             html!{writer, context,
-                tabs{{"}"}}
+                line{}tabs{{"}"}}
             }
         }
         Ok(())
@@ -528,7 +552,7 @@ impl<'a> PageElement<'a> for Condition<'a>{
 
 
 impl<'a> PageElement<'a> for ForLoopInitialization<'a> {
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result<()> {
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result {
         match self {
             ForLoopInitialization::VariableDefinition(vd) => vd.write_page(writer, context),
             ForLoopInitialization::Expression(e) => e.write_page(writer, context)
@@ -538,7 +562,7 @@ impl<'a> PageElement<'a> for ForLoopInitialization<'a> {
 
 
 impl<'a> PageElement<'a> for ForLoop<'a> {
-    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result<()> {
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result {
         let offset = context.debug_info
             .and_then(|x| x.get_statement_offset_by_pos(self.first_token().get_pos()))
             .map(|x| x.to_string());

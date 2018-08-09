@@ -180,14 +180,16 @@ pub struct DebugInfo{
     /// Map from offset of variable reference to its offset in stack
     variables: HashMap<usize, usize>,
     /// Map from offset of statement to its address in VM code
-    statements: HashMap<usize, usize>
+    statements: HashMap<usize, usize>,
+    statements_by_id: Vec<usize>,
 }
 
 impl DebugInfo{
     fn new()->Self{
         Self{
             variables: HashMap::new(),
-            statements: HashMap::new()
+            statements: HashMap::new(),
+            statements_by_id: vec![],
         }
     }
 
@@ -209,6 +211,10 @@ impl DebugInfo{
 
     pub fn get_statement_offset_by_pos<'a>(&self, pos: usize)->Option<usize>{
         self.statements.get(&pos).map(|x| *x)
+    }
+
+    pub fn statements_offsets(&self)->&[usize]{
+        self.statements_by_id.as_slice()
     }
 }
 
@@ -301,6 +307,7 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_statement(&mut self, statement: &'a Statement<'a>)->Option<()>{
+        self.debug_info.statements_by_id.push(self.operations.len());
         match statement{
             Statement::Expression(e) => {
                 self.debug_info.reg_statement_offset(statement, self.operations.len());

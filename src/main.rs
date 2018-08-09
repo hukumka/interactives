@@ -7,6 +7,7 @@ extern crate env_logger;
 #[macro_use] extern crate lazy_static;
 extern crate test;
 extern crate clap;
+extern crate strfmt;
 
 
 mod error;
@@ -19,12 +20,16 @@ mod types;
 
 use std::fs::File;
 use std::io::Read;
-use std::io::Write;
+use std::io::Write as IOWrite;
+use std::fmt::Write;
+use std::collections::HashMap;
 
 use clap::{
     Arg,
     App,
 };
+
+use strfmt::strfmt;
 
 use lexer::Preprocessor;
 use bracket_tree::BracketTree;
@@ -57,14 +62,20 @@ fn main() {
                 .value_name("OUTPUT")
                 .default_value("out.html")
                 .help("Path to resulting html page.")
+        ).arg(
+            Arg::with_name("TEMPLATE")
+                .short("t")
+                .value_name("TEMPLATE")
+                .default_value("vm/index.html")
+                .help("Template to generate result")
         ).get_matches();
 
     // get arguments
     let input = matches.value_of("INPUT").unwrap();
     let output = matches.value_of("OUTPUT").unwrap();
+    let template = matches.value_of("TEMPLATE").unwrap();
 
     // read file content
-
     let mut input = File::open(input).unwrap();
     let mut code = String::new();
     input.read_to_string(&mut code).unwrap();
@@ -98,7 +109,6 @@ fn main() {
             panic!("Execution aborted due to present error.")
         }
     };
-
 
     // compile
     println!("Write compiled");
@@ -135,26 +145,40 @@ fn main() {
         return;
     };
 
-    // build html page
-    println!("Build HTML page.");
+    // get template
+    let mut template_file = File::open(template).unwrap();
+    let mut template = String::new();
+    template_file.read_to_string(&mut template).unwrap();
+
+    let mut vars = HashMap::new();
+    vars.insert("code_html".to_string(), page_string(&syntax_tree, &compiler));
+    vars.insert("code_js".to_string(), js_string(&compiler, &function_entry_points));
+    let res = strfmt(&template, &vars).unwrap();
+
     let mut out = File::create(output).unwrap();
-    let mut context = Context::new();
-    context.set_debug_info(compiler.get_debug_info());
-    for r in &syntax_tree{
-        r.write_page(&mut out, &mut context).unwrap();
-    }
+    write!(out, "{}", res);
     out.sync_all().unwrap();
-
-    // build vm code
-    println!("Build VM page.");
-    let mut out= File::create(output.to_string() + ".js").unwrap();
-    write_compiled_to_js(&mut out, &compiler, function_entry_points.as_slice()).unwrap();
-    out.sync_all().unwrap();
-
 }
 
 
-fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, function_entry_points: &[(usize, usize)])->std::io::Result<()>{
+fn page_string<'a>(syntax_tree: &[Root<'a>], compiler: &Compiler)->String{
+    let mut res = String::new();
+    let mut context = Context::new();
+    context.set_debug_info(compiler.get_debug_info());
+    for r in syntax_tree{
+        r.write_page(&mut res, &mut context).unwrap();
+    }
+    res
+}
+
+fn js_string(compiler: &Compiler, function_entry_points: &[(usize, usize)])->String{
+    let mut res = String::new();
+    write_compiled_to_js(&mut res, &compiler, function_entry_points).unwrap();
+    res
+}
+
+
+fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, function_entry_points: &[(usize, usize)])->std::fmt::Result{
     write!(writer, "var compiled = {{commands: [")?;
     let mut iter = compiler.code().iter();
     if let Some(op) = iter.next(){
@@ -172,11 +196,19 @@ fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, f
     for (fid, entry) in iter {
         write!(writer, ",[{}, {}]", fid, entry)?;
     }
+    write!(writer, "], statements: [")?;
+    let mut iter = compiler.get_debug_info().statements_offsets().iter();
+    if let Some(i) = iter.next(){
+        write!(writer, "{}", i)?;
+    }
+    for i in iter{
+        write!(writer, ",{}", i)?;
+    }
     write!(writer, "]}}")?;
     Ok(())
 }
 
-fn write_operation_to_js<T: Write>(writer: &mut T, operation: &Operation)->std::io::Result<()>{
+fn write_operation_to_js<T: Write>(writer: &mut T, operation: &Operation)->std::fmt::Result{
     write!(writer, "[{}", operation.code as usize)?;
     for arg in &operation.args{
         write!(writer, ", {}", arg)?;

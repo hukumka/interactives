@@ -1,0 +1,93 @@
+*{
+    font-family: monospace
+}
+body{
+    font-size: 15px;
+    background-color: white;
+    padding: 0px;
+    margin: 0px;
+}
+
+
+div.code{
+    color: white;
+    background-color: black;
+    padding: 5px;
+}
+
+span.c-type{
+    color: lightgreen;
+}
+
+span.tab{
+    margin-left: 2.3em;
+}
+
+span.keyword{
+    color: orange
+}
+
+span.constant{
+    color: teal
+}
+
+span.function-name{
+    color: lightblue
+}
+
+span.line-number{
+    position: relative;
+    display: inline-block;
+    width: 5em;
+    padding-left: 2em;
+}
+
+span.breakpoint:before{
+    position: absolute;
+    background-color: #fbb;
+    right: 2em;
+    color: #000;
+    content: "bp";
+}
+span.current:before{
+    position: absolute;
+    background-color: #ffb;
+    right: 2em;
+    color: #000;
+    content: "cur";
+}
+span.breakpoint.current:before{
+    position: absolute;
+    background-color: #fb4;
+    right: 2em;
+    color: #000;
+    content: "bc";
+}
+
+#hover_image{
+    display: none;
+    position: fixed;
+    background-color: #fff;
+    border: solid 1px #bbb;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+#run{
+    border: 0px solid #222;
+    border-width: 0px 1px  0px 0px;
+    padding: 0.5em;
+    margin: 0
+}
+#step{
+    border: 0px solid #222;
+    border-width: 0px 1px 0px 0px;
+    padding: 0.5em;
+    margin: 0
+}
+#step-in{
+    border: 0px solid #222;
+    border-width: 0px 1px 0px 0px;
+    padding: 0.5em;
+    margin: 0
+}
