@@ -117,7 +117,7 @@ macro_rules! html{
     };
     ($writer: expr, $context: expr, line{$offset: expr} $($t: tt)*) => {
         if let Some(addr) = $offset{
-            write!($writer, "<span class=\"line-number\" data_address=\"{}\">{}</span>", addr, $context.current_line)?;
+            write!($writer, "<span class=\"line-number clickable\" data_address=\"{}\">{}</span>", addr, $context.current_line)?;
         }else{
             write!($writer, "<span class=\"line-number\">{}</span>", $context.current_line)?;
         }

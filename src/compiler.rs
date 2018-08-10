@@ -182,7 +182,19 @@ pub struct DebugInfo{
     /// Map from offset of statement to its address in VM code
     statements: HashMap<usize, usize>,
     statements_by_id: Vec<usize>,
+    variables_transactions: Vec<VariableTransaction>,
+    variables_transactions_stack: Vec<usize>,
 }
+
+
+#[derive(Debug)]
+pub struct VariableTransaction{
+    pub pos: usize,
+    pub name: String,
+    pub var_id: usize,
+    pub add: bool
+}
+
 
 impl DebugInfo{
     fn new()->Self{
@@ -190,11 +202,53 @@ impl DebugInfo{
             variables: HashMap::new(),
             statements: HashMap::new(),
             statements_by_id: vec![],
+            variables_transactions: vec![],
+            variables_transactions_stack: vec![],
+        }
+    }
+
+    pub fn get_variable_transactions(&self)->&[VariableTransaction]{
+        self.variables_transactions.as_slice()
+    }
+
+    fn make_stack_floor(&self)->usize{
+        self.variables_transactions_stack.len()
+    }
+
+    fn recover_to_stack_floor(&mut self, code_offset: usize, floor: usize){
+        let count = self.variables_transactions_stack.len() - floor;
+        for _ in 0..count{
+            self.pop_variable(code_offset);
         }
     }
 
     fn reg_variable_offset<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: usize){
         self.variables.insert(name.get_pos(), stack_offset);
+        self.variables_transactions_stack.push(self.variables_transactions.len());
+    }
+
+    fn push_variable<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: usize, code_offset: usize){
+        self.reg_variable_offset(name, stack_offset);
+        self.variables_transactions.push(VariableTransaction{
+            pos: code_offset,
+            name: name.token_str().to_string(),
+            add: true,
+            var_id: self.variables_transactions_stack.len(),
+        });
+    }
+
+    fn pop_variable(&mut self, code_offset: usize){
+        if let Some(x) = self.variables_transactions_stack.pop(){
+            let name = self.variables_transactions[x].name.clone();
+            let var_id = self.variables_transactions[x].var_id;
+            assert!(self.variables_transactions[x].add);
+            self.variables_transactions.push(VariableTransaction{
+                pos: code_offset,
+                name,
+                add: false,
+                var_id,
+            });
+        }
     }
 
     fn reg_statement_offset<'a>(&mut self, statement: &'a Statement<'a>, vm_offset: usize){
@@ -275,7 +329,7 @@ impl<'a> Compiler<'a>{
             .map(|v| {
                 match self.variables.define_variable(v){
                     Ok(x) => {
-                        self.debug_info.reg_variable_offset(v.name, x);
+                        self.debug_info.push_variable(v.name, x, self.operations.len());
                         true
                     },
                     Err(x) => {
@@ -292,18 +346,28 @@ impl<'a> Compiler<'a>{
             });
             self.current_function = None;
             self.variables.pop().unwrap();
+            // release debug info
+            for _ in &func.arguments{
+                self.debug_info.pop_variable(self.operations.len());
+            }
             Some(start)
         }else{
             self.current_function = None;
             self.variables.pop().unwrap();
+            for _ in &func.arguments{
+                self.debug_info.pop_variable(self.operations.len());
+            }
             None
         }
     }
 
     fn compile_block(&mut self, block: &'a Block<'a>) ->Option<()>{
-        block.statements.iter()
+        let stack_frame = self.debug_info.make_stack_floor();
+        let res = block.statements.iter()
             .map(|s| self.compile_statement(s))
-            .fold(Some(()), |a, b| a.and(b))
+            .fold(Some(()), |a, b| a.and(b));
+        self.debug_info.recover_to_stack_floor(self.operations.len(), stack_frame);
+        res
     }
 
     fn compile_statement(&mut self, statement: &'a Statement<'a>)->Option<()>{
@@ -361,7 +425,7 @@ impl<'a> Compiler<'a>{
             code: Code::Clone,
             args: vec![id, from]
         });
-        self.debug_info.reg_variable_offset(var.name(), id);
+        self.debug_info.push_variable(var.name(), id, self.operations.len());
         Some(())
     }
 
@@ -516,11 +580,11 @@ impl<'a> Compiler<'a>{
         })?;
         let type_ = self.variables.get_type(var_id);
         let id = self.put_expr();
+        self.debug_info.reg_variable_offset(var, var_id);
         self.operations.push(Operation{
             code: Code::PointerToLocal,
             args: vec![id, var_id]
         });
-        self.debug_info.reg_variable_offset(var, var_id);
         Some((type_, true))
     }
 

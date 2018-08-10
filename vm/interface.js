@@ -1,5 +1,49 @@
+    function PersistentStack(parent, value){
+        this.parent = parent
+        this.value = value
+        this.push = function(value){
+            return new PersistentStack(this, value)
+        }
+        this.pop = function(){
+            if(this.parent !== undefined){
+                return this.parent
+            }
+        }
+
+        this.top = function(){
+            return this.value
+        }
+
+        this.values = function(){
+            var res = [];
+            var head = this;
+            while(head.parent !== undefined){
+                res.push(head.value)
+                head = head.parent
+            }
+            return res
+        }
+    }
+
+
     var vm = new VM(compiled.commands, compiled.function_enters)
-    console.log(vm)
+
+    var variables_data = []
+    var stack = new PersistentStack()
+    var transaction_id = 0
+    for(var i=0; i<vm.code.length; ++i){
+        while(compiled.variable_transactions[transaction_id].pos == i){
+            var t = compiled.variable_transactions[transaction_id]
+            if(t.add){
+                stack = stack.push(t)
+            }else{
+                stack = stack.pop()
+            }
+            transaction_id += 1;
+        }
+        variables_data.push(stack)
+    }
+
 
 	function on_hover(event){
 	    var elem = event.target;
@@ -35,9 +79,18 @@
         }
 	}
 
+
+    function display_variables(){
+        var vars = variables_data[vm.ip].values().reverse()
+        var text = "<ul>" + vars.map(x => "<li>"+x.name + " = " + vm.get_local_variable(x.id) +"</li>").join("") + "</ul>"
+        variables.innerHTML = text
+    }
+
 	var hover_image=undefined;
+	var variables=undefined;
 	window.onload = function(){
 	    hover_image=document.getElementById('hover_image');
+	    variables=document.getElementById('variables');
 
         var lines_e = document.getElementsByClassName('line-number');
 	    for(var i=0; i<lines_e.length; ++i){
@@ -108,6 +161,8 @@
         }
         current_line = get_current_line(vm.ip)
         current_line.classList.add('current')
+
+        display_variables()
     }
 	addEventListener('mousemove', on_hover);
 	addEventListener('click', on_click);

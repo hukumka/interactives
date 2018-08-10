@@ -11,12 +11,19 @@
     </script>
 </head>
 <body>
-    <div id="hover_image"></div>
-    <div id="controlls">
-        <span id="run">run</span><span id="step">step</span><span id="step-in">step-in</span>
+    <div class="popups">
+        <div id="hover_image"></div>
     </div>
-    <div class="code">
-        {code_html}
+    <div class="interface">
+        <div id="controls">
+            <div id="flow-control">
+                <a id="run">run</a><a id="step">step</a><a id="step-in">step-in</a>
+            </div>
+            <div id="variables"></div>
+        </div>
+        <div class="code">
+            {code_html}
+        </div>
     </div>
 </body>
 </html>

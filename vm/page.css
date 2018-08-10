@@ -3,64 +3,94 @@
 }
 body{
     font-size: 15px;
-    background-color: white;
+    background-color: #181818;
     padding: 0px;
     margin: 0px;
+    height: 100vh;
+}
+
+
+div.interface{
+    display: grid;
+    grid-template-columns: 1fr auto auto 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+        "left code controls right";
+    align-items: stretch;
+    min-height: 100%;
 }
 
 
 div.code{
     color: white;
-    background-color: black;
-    padding: 5px;
+    padding-top: 0.5em; padding-bottom: 0.5em;
+    grid-area: code;
+    padding-right: 3em;
+    border: 0px solid #555;
+    border-width: 0px 2px 0px 2px;
 }
 
-span.c-type{
+#controls{
+    grid-area: controls;
+}
+
+.code span.c-type{
     color: lightgreen;
 }
 
-span.tab{
+.code span.tab{
     margin-left: 2.3em;
 }
 
-span.keyword{
+.code span.keyword{
     color: orange
 }
 
-span.constant{
+.code span.constant{
     color: teal
 }
 
-span.function-name{
+.code span.function-name{
     color: lightblue
 }
 
-span.line-number{
+.code span.line-number{
     position: relative;
     display: inline-block;
-    width: 5em;
-    padding-left: 2em;
+    width: 4em;
+    margin: 0em 1em;
+    text-align: center;
+    border-bottom: solid 1px #333;
+
+    -webkit-user-select: none;
+	-khtml-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	-o-user-select: none;
+	user-select: none;
 }
 
-span.breakpoint:before{
+.code span.line-number.clickable{
+    cursor: pointer;
+}
+
+.code span.line-number:before{
     position: absolute;
+    color: #000;
+    width: 1.2em;
+    left: 0em;
+}
+
+.code span.breakpoint:before{
     background-color: #fbb;
-    right: 2em;
-    color: #000;
-    content: "bp";
+    content: 'bp';
 }
-span.current:before{
-    position: absolute;
+.code span.current:before{
     background-color: #ffb;
-    right: 2em;
-    color: #000;
-    content: "cur";
+    content: "cr";
 }
-span.breakpoint.current:before{
-    position: absolute;
-    background-color: #fb4;
-    right: 2em;
-    color: #000;
+.code span.breakpoint.current:before{
+    background-color: #fb8;
     content: "bc";
 }
 
@@ -73,21 +103,40 @@ span.breakpoint.current:before{
     padding: 4px;
 }
 
+
+#controls{
+    display: grid;
+    grid-template-rows: auto 1fr;
+}
+
+#controls #flow-control a{
+    display: block;
+    color: #007db6;
+    cursor: pointer;
+    padding: 0.2em 0.5em;
+}
+#controls #flow-control a:hover{
+    background-color: #cbeeff;
+}
+
+#variables{
+    margin: 0.5em;
+    background-color: #eee;
+}
+
+#variables>ul{
+    list-style: none;
+    color: #222;
+    margin: 0;
+    padding: 0.2em 0.5em;
+}
+#variables>ul>li{
+    margin: 0;
+}
+
 #run{
-    border: 0px solid #222;
-    border-width: 0px 1px  0px 0px;
-    padding: 0.5em;
-    margin: 0
 }
 #step{
-    border: 0px solid #222;
-    border-width: 0px 1px 0px 0px;
-    padding: 0.5em;
-    margin: 0
 }
 #step-in{
-    border: 0px solid #222;
-    border-width: 0px 1px 0px 0px;
-    padding: 0.5em;
-    margin: 0
 }
