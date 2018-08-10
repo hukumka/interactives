@@ -219,10 +219,10 @@ fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, f
     write!(writer, "], variable_transactions: [")?;
     let mut iter = compiler.get_debug_info().get_variable_transactions().iter();
     if let Some(i) = iter.next(){
-        write!(writer, "{{name: '{}', add: {}, pos: {}, id: {}}}", i.name, i.add, i.pos, i.var_id)?;
+        write!(writer, "{{name: '{}', add: {}, pos: {}, id: {}, pair: {}}}", i.name, i.add, i.pos, i.var_id, i.pair)?;
     }
     for i in iter{
-        write!(writer, ", {{name: '{}', add: {}, pos: {}, id: {}}}", i.name, i.add, i.pos, i.var_id)?;
+        write!(writer, ", {{name: '{}', add: {}, pos: {}, id: {}, pair: {}}}", i.name, i.add, i.pos, i.var_id, i.pair)?;
     }
     write!(writer, "]}}")?;
     Ok(())

@@ -326,12 +326,12 @@ impl<'a> PageElement<'a> for Expression<'a>{
 }
 
 pub fn write_variable<'a, T: Write>(var: &'a TokenData<'a>, writer: &mut T, context: &mut Context<'a>)->Result{
-    let var_offset = context.debug_info
-        .and_then(|x| x.get_variable_offset(var))
-        .map(|x| x.to_string());
-    if let Some(var_offset) = var_offset {
+    let var_data = context.debug_info
+        .and_then(|x| x.get_variable_data(var))
+        .map(|x| (x.0.to_string(), x.1.to_string()));
+    if let Some((var_offset, var_transaction)) = var_data {
         html! {writer, context,
-            span(class="variable-name" data_var_offset=var_offset)[
+            span(class="variable-name" data_var_offset=var_offset data_var_transaction=var_transaction)[
                 {var}
             ]
         }
@@ -521,7 +521,7 @@ impl<'a> PageElement<'a> for Condition<'a>{
                     tabs{
                         {"}"}
                         span(class="keyword")[{"else if"}]
-                        {"()"}
+                        {"("}
                         {cond.condition}
                         {"){"}
                     }
@@ -532,18 +532,26 @@ impl<'a> PageElement<'a> for Condition<'a>{
         }
         if let Some(else_) = else_{
             html!{writer, context,
-                line{}
-                tabs{
-                    {"}"}
-                    span(class="keyword")[{"else"}]
-                    {"{"}
-                }
+                div(class="")[
+                    line{}
+                    tabs{
+                        {"}"}
+                        span(class="keyword")[{"else"}]
+                        {"{"}
+                    }
+                ]
                 {else_}
-                line{}tabs{{"}"}}
+                div(class="")[
+                    line{}
+                    tabs{{"}"}}
+                ]
             }
         }else{
             html!{writer, context,
-                line{}tabs{{"}"}}
+                div(class="")[
+                    line{}
+                    tabs{{"}"}}
+                ]
             }
         }
         Ok(())
@@ -567,7 +575,8 @@ impl<'a> PageElement<'a> for ForLoop<'a> {
             .and_then(|x| x.get_statement_offset_by_pos(self.first_token().get_pos()))
             .map(|x| x.to_string());
         html! {writer, context,
-            div(class="statement" data_address=offset)[
+            div(class="statement" data_address=offset.clone())[
+                line{offset}
                 tabs{
                     span(class="keyword")[{"for"}]
                     {"("}
@@ -580,7 +589,7 @@ impl<'a> PageElement<'a> for ForLoop<'a> {
                 }
             ]
             {self.body}
-            tabs{{"}"}}
+            line{}tabs{{"}"}}
         };
         Ok(())
     }

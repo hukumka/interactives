@@ -28,29 +28,49 @@
 
     var vm = new VM(compiled.commands, compiled.function_enters)
 
-    var variables_data = []
-    var stack = new PersistentStack()
-    var transaction_id = 0
-    for(var i=0; i<vm.code.length; ++i){
-        while(compiled.variable_transactions[transaction_id].pos == i){
-            var t = compiled.variable_transactions[transaction_id]
-            if(t.add){
-                stack = stack.push(t)
-            }else{
-                stack = stack.pop()
+    function VariableManager(transactions){
+        this.transactions = transactions;
+
+        this.variables_data = []
+        var stack = new PersistentStack()
+        var transaction_id = 0
+        for(var i=0; i<vm.code.length; ++i){
+            while(compiled.variable_transactions[transaction_id].pos == i){
+                var t = compiled.variable_transactions[transaction_id]
+                if(t.add){
+                    stack = stack.push(t)
+                }else{
+                    stack = stack.pop()
+                }
+                transaction_id += 1;
             }
-            transaction_id += 1;
+            this.variables_data.push(stack)
         }
-        variables_data.push(stack)
+
+        this.visible_variables = function(ip){
+            return variables_manager.variables_data[ip].values().reverse()
+        }
+
+        this.is_visible = function(ip, transaction){
+            var pair = this.transactions[transaction].pair
+            return this.transactions[transaction].pos <= ip && ip < this.transactions[pair].pos
+        }
     }
+
+    var variables_manager = new VariableManager(compiled.variable_transactions)
 
 
 	function on_hover(event){
 	    var elem = event.target;
 	    if(elem.getAttribute('class') == "variable-name" && hover_image !== undefined){
 	        var variable_id = Number(elem.getAttribute('data_var_offset'))
+            var transaction_id = Number(elem.getAttribute('data_var_transaction'))
 
-	        hover_image.innerHTML = elem.innerHTML + " = " + vm.get_local_variable(variable_id)
+            if(variables_manager.is_visible(vm.ip, transaction_id)){
+	            hover_image.innerHTML = elem.innerHTML + " = " + vm.get_local_variable(variable_id)
+            }else{
+	            hover_image.innerHTML = elem.innerHTML + " is out of bound."
+            }
 	        hover_image.style.left = (event.clientX + 10) + "px";
 	        hover_image.style.top = (event.clientY + 10) + "px";
 	        hover_image.style.display = "inline-block"
@@ -81,7 +101,7 @@
 
 
     function display_variables(){
-        var vars = variables_data[vm.ip].values().reverse()
+        var vars = variables_manager.visible_variables(vm.ip)
         var text = "<ul>" + vars.map(x => "<li>"+x.name + " = " + vm.get_local_variable(x.id) +"</li>").join("") + "</ul>"
         variables.innerHTML = text
     }
@@ -95,7 +115,6 @@
         var lines_e = document.getElementsByClassName('line-number');
 	    for(var i=0; i<lines_e.length; ++i){
 	        var l = lines_e[i];
-            console.log(l)
             var addr = l.getAttribute('data_address');
             if(addr != null){
                 lines.push([addr, l])
@@ -148,7 +167,6 @@
         }
         var range = vm.current_function_range()
         if(range[0] <= addr < range[1]){
-            console.log("next statement", addr)
             return addr;
         }else{
             return null;

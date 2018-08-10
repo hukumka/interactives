@@ -178,7 +178,7 @@ impl<'a> FunctionManager<'a>{
 #[derive(Debug)]
 pub struct DebugInfo{
     /// Map from offset of variable reference to its offset in stack
-    variables: HashMap<usize, usize>,
+    variables: HashMap<usize, (usize, usize)>,
     /// Map from offset of statement to its address in VM code
     statements: HashMap<usize, usize>,
     statements_by_id: Vec<usize>,
@@ -192,7 +192,8 @@ pub struct VariableTransaction{
     pub pos: usize,
     pub name: String,
     pub var_id: usize,
-    pub add: bool
+    pub add: bool,
+    pub pair: usize,
 }
 
 
@@ -223,18 +224,20 @@ impl DebugInfo{
     }
 
     fn reg_variable_offset<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: usize){
-        self.variables.insert(name.get_pos(), stack_offset);
-        self.variables_transactions_stack.push(self.variables_transactions.len());
+        let tr_id = self.variables_transactions_stack[stack_offset-1];
+        self.variables.insert(name.get_pos(), (stack_offset, tr_id));
     }
 
     fn push_variable<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: usize, code_offset: usize){
-        self.reg_variable_offset(name, stack_offset);
+        self.variables_transactions_stack.push(self.variables_transactions.len());
         self.variables_transactions.push(VariableTransaction{
             pos: code_offset,
             name: name.token_str().to_string(),
             add: true,
             var_id: self.variables_transactions_stack.len(),
+            pair: 0,
         });
+        self.reg_variable_offset(name, stack_offset);
     }
 
     fn pop_variable(&mut self, code_offset: usize){
@@ -242,21 +245,28 @@ impl DebugInfo{
             let name = self.variables_transactions[x].name.clone();
             let var_id = self.variables_transactions[x].var_id;
             assert!(self.variables_transactions[x].add);
+            self.variables_transactions[x].pair = self.variables_transactions.len();
             self.variables_transactions.push(VariableTransaction{
                 pos: code_offset,
                 name,
                 add: false,
                 var_id,
+                pair: x,
             });
         }
     }
 
     fn reg_statement_offset<'a>(&mut self, statement: &'a Statement<'a>, vm_offset: usize){
+        self.statements_by_id.push(vm_offset);
         self.statements.insert(statement.first_token().get_pos(), vm_offset);
     }
 
+    pub fn get_variable_data<'a>(&self, name: &'a TokenData<'a>)->Option<(usize, usize)>{
+        self.variables.get(&name.get_pos()).map(|x| x.clone())
+    }
+
     pub fn get_variable_offset<'a>(&self, name: &'a TokenData<'a>)->Option<usize>{
-        self.variables.get(&name.get_pos()).map(|x| *x)
+        self.variables.get(&name.get_pos()).map(|x| x.0)
     }
 
     pub fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
@@ -371,7 +381,6 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_statement(&mut self, statement: &'a Statement<'a>)->Option<()>{
-        self.debug_info.statements_by_id.push(self.operations.len());
         match statement{
             Statement::Expression(e) => {
                 self.debug_info.reg_statement_offset(statement, self.operations.len());
@@ -430,6 +439,7 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_for_loop(&mut self, for_loop: &'a ForLoop<'a>, statement: &'a Statement<'a>)->Option<()>{
+        let stack_floor = self.debug_info.make_stack_floor();
         self.variables.push();
         let succ = match &for_loop.init{
             ForLoopInitialization::VariableDefinition(v) => self.compile_variable_definition(&v),
@@ -458,6 +468,7 @@ impl<'a> Compiler<'a>{
         });
         self.operations[jump_op].args[0] = self.operations.len(); // set jump address to after loop
         self.variables.pop().unwrap();
+        self.debug_info.recover_to_stack_floor(self.operations.len(), stack_floor);
         succ
     }
 
@@ -641,7 +652,7 @@ impl<'a> Compiler<'a>{
                 .zip(&type_.args)
                 .map(|(arg, type_)| self.compile_expression_of_type(arg, *type_))
                 .fold(Some(()), |a, b| a.and(b));
-            self.temp_values -= func.arguments.len() + 1;
+            self.temp_values -= func.arguments.len();
             self.operations.push(Operation{
                 code: Code::AddSp,
                 args: vec![sp_offset]
