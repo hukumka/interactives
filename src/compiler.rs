@@ -58,6 +58,7 @@ pub enum Code {
     Nop,
     Clone,
     ConstInt,
+    ConstFloat,
     PointerToLocal,
 
     Return,
@@ -65,12 +66,23 @@ pub enum Code {
 
     AddSp,
     SubSb,
+
+    Div,
+    FloatToInt,
 }
 
 #[derive(Debug)]
 pub struct Operation{
     pub code: Code,
     pub args: Vec<usize>,
+    pub value: Option<Value>
+}
+
+
+#[derive(Debug)]
+pub enum Value{
+    Int(i32),
+    Float(f32),
 }
 
 
@@ -331,10 +343,10 @@ impl<'a> Compiler<'a>{
         &self.debug_info
     }
 
-    pub fn register_function_definition(&mut self, f: &'a FunctionDefinition<'a>)->Result<usize, Error>{
+    pub fn register_function_definition(&mut self, f: &'a FunctionDefinition<'a>)->Result<usize, Error<'a>>{
         self.functions.register_function_definition(f)
     }
-    pub fn register_function_declaration(&mut self, f: &'a FunctionDeclaration<'a>)->Result<usize, Error>{
+    pub fn register_function_declaration(&mut self, f: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
         self.functions.register_function_declaration(f)
     }
 
@@ -374,6 +386,7 @@ impl<'a> Compiler<'a>{
         if arguments_parsed{
             self.compile_block(&func.body)?;
             self.operations.push(Operation{
+                value: None,
                 code: Code::Return,
                 args: vec![]
             });
@@ -435,10 +448,12 @@ impl<'a> Compiler<'a>{
         self.compile_expression_of_type(ret, required_type)?;
         let id = self.take_latest_expr();
         self.operations.push(Operation{
+            value: None,
             code: Code::Clone,
             args: vec![0, id]
         });
         self.operations.push(Operation{
+            value: None,
             code: Code::Return,
             args: vec![]
         });
@@ -454,6 +469,7 @@ impl<'a> Compiler<'a>{
         let _type_ = self.compile_expression_of_type(&var.set_to, required_type)?;
         let from = self.take_latest_expr();
         self.operations.push(Operation{
+            value: None,
             code: Code::Clone,
             args: vec![id, from]
         });
@@ -479,6 +495,7 @@ impl<'a> Compiler<'a>{
         let jump_op = self.operations.len();
         let id = self.take_latest_expr();
         self.operations.push(Operation {
+            value: None,
             code: Code::JumpZ,
             args: vec![0, id]
         });
@@ -486,6 +503,7 @@ impl<'a> Compiler<'a>{
         let succ = succ.and(self.compile_expression_of_type(&for_loop.step, Type::int()));
         self.take_latest_expr();
         self.operations.push(Operation{
+            value: None,
             code: Code::Jump,
             args: vec![loop_start]
         });
@@ -500,6 +518,7 @@ impl<'a> Compiler<'a>{
         let jump_op = self.operations.len();
         let id = self.take_latest_expr();
         self.operations.push(Operation{
+            value: None,
             code: Code::JumpZ,
             args: vec![0, id]
         });
@@ -507,6 +526,7 @@ impl<'a> Compiler<'a>{
         if let Some(ref else_) = cond.else_ {
             let second_jump_op = self.operations.len();
             self.operations.push(Operation {
+                value: None,
                 code: Code::Jump,
                 args: vec![0]
             });
@@ -538,12 +558,14 @@ impl<'a> Compiler<'a>{
             let id = self.put_expr();
             if op.operator.token_str() == "++" {
                 self.operations.push(Operation {
+                    value: None,
                     code: Code::Inc,
                     args: vec![id]
                 });
                 Some((type_, is_rvalue))
             }else if op.operator.token_str() == "--"{
                 self.operations.push(Operation {
+                    value: None,
                     code: Code::Dec,
                     args: vec![id]
                 });
@@ -567,11 +589,13 @@ impl<'a> Compiler<'a>{
                 if is_rvalue && (type_ == Type::int() || type_.pointer_count > 0) {
                     if x == "--"{
                         self.operations.push(Operation {
+                            value: None,
                             code: Code::Dec,
                             args: vec![id]
                         });
                     }else{
                         self.operations.push(Operation {
+                            value: None,
                             code: Code::Inc,
                             args: vec![id]
                         });
@@ -620,6 +644,7 @@ impl<'a> Compiler<'a>{
         let id = self.put_expr();
         self.debug_info.reg_variable_offset(var, var_id);
         self.operations.push(Operation{
+            value: None,
             code: Code::PointerToLocal,
             args: vec![id, var_id]
         });
@@ -627,19 +652,25 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_expression_constant(&mut self, c: &'a TokenData<'a>)->Option<(Type, bool)>{
-        let i = c.token_str().parse::<usize>().ok();
-        let i = if let Some(i) = i{
-            i
+        let id = self.put_expr();
+        if let Some(i) = c.token_str().parse::<i32>().ok(){
+            self.operations.push(Operation{
+                code: Code::ConstInt,
+                args: vec![id],
+                value: Some(Value::Int(i))
+            });
+            Some((Type::int(), false))
+        }else if let Some(f) = c.token_str().parse::<f32>().ok(){
+            self.operations.push(Operation{
+                code: Code::ConstFloat,
+                args: vec![id],
+                value: Some(Value::Float(f))
+            });
+            Some((Type::float(), false))
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_INVALID_CONSTANT, c));
-            return None;
-        };
-        let id = self.put_expr();
-        self.operations.push(Operation{
-            code: Code::ConstInt,
-            args: vec![id, i]
-        });
-        Some((Type::int(), false))
+            None
+        }
     }
 
     fn compile_expression_index(&mut self, i: &'a Index<'a>)->Option<(Type, bool)>{
@@ -654,7 +685,8 @@ impl<'a> Compiler<'a>{
             let id = self.put_expr();
             self.operations.push(Operation{
                 code: Code::Sum,
-                args: vec![id, pointer, index]
+                args: vec![id, pointer, index],
+                value: None,
             });
             Some((pointer_type.dereference().unwrap(), true))
         }else{
@@ -678,13 +710,16 @@ impl<'a> Compiler<'a>{
             self.temp_values -= func.arguments.len();
             self.operations.push(Operation{
                 code: Code::AddSp,
-                args: vec![sp_offset]
+                args: vec![sp_offset],
+                value: None,
             });
             self.operations.push(Operation{
+                value: None,
                 code: Code::Call,
                 args: vec![func_id]
             });
             self.operations.push(Operation{
+                value: None,
                 code: Code::SubSb,
                 args: vec![sp_offset]
             });
@@ -702,6 +737,7 @@ impl<'a> Compiler<'a>{
             let jump_id = self.operations.len();
             let id = self.take_latest_expr();
             self.operations.push(Operation {
+                value: None,
                 code: Code::JumpNZ,
                 args: vec![0, id]
             });
@@ -713,6 +749,7 @@ impl<'a> Compiler<'a>{
             let jump_id = self.operations.len();
             let id = self.take_latest_expr();
             self.operations.push(Operation {
+                value: None,
                 code: Code::JumpZ,
                 args: vec![0, id]
             });
@@ -726,6 +763,7 @@ impl<'a> Compiler<'a>{
                 let r = self.take_latest_expr();
                 let l = self.take_latest_expr();
                 self.operations.push(Operation{
+                    value: None,
                     code: Code::PointerSet,
                     args: vec![l, r]
                 });
@@ -758,11 +796,19 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_less_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        let right = self.take_latest_expr();
+        let left = self.take_latest_expr();
+        let res = self.put_expr();
         if l == Type::int() && r == Type::int(){
-            let right = self.take_latest_expr();
-            let left = self.take_latest_expr();
-            let res = self.put_expr();
             self.operations.push(Operation{
+                value: None,
+                code: Code::Less,
+                args: vec![res, left, right]
+            });
+            Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
                 code: Code::Less,
                 args: vec![res, left, right]
             });
@@ -774,11 +820,19 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_greater_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        let right = self.take_latest_expr();
+        let left = self.take_latest_expr();
+        let res = self.put_expr();
         if l == Type::int() && r == Type::int(){
-            let right = self.take_latest_expr();
-            let left = self.take_latest_expr();
-            let res = self.put_expr();
             self.operations.push(Operation{
+                value: None,
+                code: Code::Less,
+                args: vec![res, right, left]
+            });
+            Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
                 code: Code::Less,
                 args: vec![res, right, left]
             });
@@ -790,11 +844,19 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_less_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        let right = self.take_latest_expr();
+        let left = self.take_latest_expr();
+        let res = self.put_expr();
         if l == Type::int() && r == Type::int(){
-            let right = self.take_latest_expr();
-            let left = self.take_latest_expr();
-            let res = self.put_expr();
             self.operations.push(Operation{
+                value: None,
+                code: Code::LessOrEq,
+                args: vec![res, left, right]
+            });
+            Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
                 code: Code::LessOrEq,
                 args: vec![res, left, right]
             });
@@ -806,11 +868,19 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_greater_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        let right = self.take_latest_expr();
+        let left = self.take_latest_expr();
+        let res = self.put_expr();
         if l == Type::int() && r == Type::int(){
-            let right = self.take_latest_expr();
-            let left = self.take_latest_expr();
-            let res = self.put_expr();
             self.operations.push(Operation{
+                value: None,
+                code: Code::LessOrEq,
+                args: vec![res, right, left]
+            });
+            Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
                 code: Code::LessOrEq,
                 args: vec![res, right, left]
             });
@@ -822,11 +892,12 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        let right = self.take_latest_expr();
+        let left = self.take_latest_expr();
+        let res = self.put_expr();
         if l == r{
-            let right = self.take_latest_expr();
-            let left = self.take_latest_expr();
-            let res = self.put_expr();
             self.operations.push(Operation{
+                value: None,
                 code: Code::Eq,
                 args: vec![res, left, right]
             });
@@ -838,11 +909,12 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_not_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+        let right = self.take_latest_expr();
+        let left = self.take_latest_expr();
+        let res = self.put_expr();
         if l == r{
-            let right = self.take_latest_expr();
-            let left = self.take_latest_expr();
-            let res = self.put_expr();
             self.operations.push(Operation{
+                value: None,
                 code: Code::NotEq,
                 args: vec![res, left, right]
             });
@@ -859,22 +931,32 @@ impl<'a> Compiler<'a>{
         let res = self.put_expr();
         if l.pointer_count > 0 && r == Type::int() {
             self.operations.push(Operation {
+                value: None,
                 code: Code::Sum,
                 args: vec![res, left, right]
             });
             Some((l.clone(), false))
         }else if l == Type::int() && r.pointer_count > 0 {
             self.operations.push(Operation {
+                value: None,
                 code: Code::Sum,
                 args: vec![res, left, right]
             });
             Some((r.clone(), false))
         }else if l == Type::int() && r == Type::int(){
             self.operations.push(Operation {
+                value: None,
                 code: Code::Sum,
                 args: vec![res, left, right]
             });
             Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
+                code: Code::Sum,
+                args: vec![res, left, right]
+            });
+            Some((Type::float(), false))
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
             None
@@ -887,22 +969,32 @@ impl<'a> Compiler<'a>{
         let res = self.put_expr();
         if l.pointer_count > 0 && r == Type::int() {
             self.operations.push(Operation {
+                value: None,
                 code: Code::Diff,
                 args: vec![res, left, right]
             });
             Some((l.clone(), false))
         }else if l.pointer_count > 0 && l == r {
             self.operations.push(Operation {
+                value: None,
                 code: Code::Diff,
                 args: vec![res, left, right]
             });
             Some((Type::int(), false))
         }else if l == Type::int() && r == Type::int(){
             self.operations.push(Operation {
+                value: None,
                 code: Code::Diff,
                 args: vec![res, left, right]
             });
             Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
+                code: Code::Diff,
+                args: vec![res, left, right]
+            });
+            Some((Type::float(), false))
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
             None
@@ -915,10 +1007,18 @@ impl<'a> Compiler<'a>{
         let res = self.put_expr();
         if l == Type::int() && r == Type::int(){
             self.operations.push(Operation {
+                value: None,
                 code: Code::Mul,
                 args: vec![res, left, right]
             });
             Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
+                code: Code::Mul,
+                args: vec![res, left, right]
+            });
+            Some((Type::float(), false))
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
             None
@@ -931,10 +1031,18 @@ impl<'a> Compiler<'a>{
         let res = self.put_expr();
         if l == Type::int() && r == Type::int(){
             self.operations.push(Operation {
+                value: None,
                 code: Code::DivI,
                 args: vec![res, left, right]
             });
             Some((Type::int(), false))
+        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
+            self.operations.push(Operation {
+                value: None,
+                code: Code::Div,
+                args: vec![res, left, right]
+            });
+            Some((Type::float(), false))
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
             None
@@ -947,6 +1055,7 @@ impl<'a> Compiler<'a>{
         let res = self.put_expr();
         if l == Type::int() && r == Type::int(){
             self.operations.push(Operation {
+                value: None,
                 code: Code::Mod,
                 args: vec![res, left, right]
             });
@@ -962,6 +1071,7 @@ impl<'a> Compiler<'a>{
         let id = self.take_latest_expr();
         if is_rvalue{
             self.operations.push(Operation{
+                value: None,
                 code: Code::Dereference,
                 args: vec![id, id]
             });
@@ -982,6 +1092,16 @@ impl<'a> Compiler<'a>{
         if from == into{
             Some(())
         }else if from.pointer_count>0 && into == Type::int(){
+            Some(())
+        }else if from.autocast(&into){
+            Some(())
+        }else if from == Type::float() && into == Type::int(){
+            let id1 = self.take_latest_expr();
+            self.operations.push(Operation{
+                value: None,
+                code: Code::FloatToInt,
+                args: vec![id1, id1]
+            });
             Some(())
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));

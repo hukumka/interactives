@@ -42,6 +42,7 @@ use page::{
 use compiler::{
     Compiler,
     Operation,
+    Value,
 };
 use error::Error;
 
@@ -114,22 +115,40 @@ fn main() {
     // compile
     println!("Write compiled");
     let mut compiler = Compiler::new();
-    let mut res = Some(0);
+    let mut res = true;
+    let mut errors = vec![];
     for r in &syntax_tree{
         match r{
             Root::VariableDefinition(_) => {
                 unimplemented!("Global variable yet to be supported")
             },
             Root::FunctionDefinition(x) => {
-                res = compiler.register_function_definition(x).ok();
+                match compiler.register_function_definition(x){
+                    Ok(_) => {},
+                    Err(e) => {
+                        res = false;
+                        errors.push(e);
+                    }
+                }
             }
             Root::FunctionDeclaration(x) => {
-                res = compiler.register_function_declaration(x).ok();
+                match compiler.register_function_declaration(x){
+                    Ok(_) => {},
+                    Err(e) => {
+                        res = false;
+                        errors.push(e);
+                    }
+                }
             }
         }
     }
 
-    let res: Option<Vec<_>> = res.and_then(|_|{
+    if !res{
+        Error::print_errors(&errors, &line_starts);
+        return;
+    }
+
+    let res: Option<Vec<_>> = {
         syntax_tree.iter()
             .filter_map(|x|{
                 match x{
@@ -139,7 +158,7 @@ fn main() {
             })
             .map(|x| compiler.compile_function(x))
             .collect()
-    });
+    };
 
     let res = if let Some(res) = res{
         res
@@ -267,6 +286,15 @@ fn write_operation_to_js<T: Write>(writer: &mut T, operation: &Operation)->std::
     write!(writer, "[{}", operation.code as usize)?;
     for arg in &operation.args{
         write!(writer, ", {}", arg)?;
+    }
+    match operation.value{
+        Some(Value::Int(i)) => {
+            write!(writer, ", {}", i)?;
+        },
+        Some(Value::Float(f)) => {
+            write!(writer, ", {}", f)?;
+        },
+        _ => {}
     }
     write!(writer, "]")
 }

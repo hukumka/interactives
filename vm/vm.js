@@ -211,15 +211,21 @@ function VM(code, functions, function_links){
         self.data[self.sp + args[1]] = args[2];
         self.ip++;
     }
-    // PointerToLocal
-    this.operation_names[19] = "PTR_LOCAL";
+    // ConstFloat
+    this.operation_names[19] = "CONST_FLOAT";
     this.operations[19] = function(args){
+        self.data[self.sp + args[1]] = args[2];
+        self.ip++;
+    }
+    // PointerToLocal
+    this.operation_names[20] = "PTR_LOCAL";
+    this.operations[20] = function(args){
         self.data[self.sp + args[1]] = self.sp + args[2];
         self.ip++;
     }
     // return
-    this.operation_names[20] = "RET";
-    this.operations[20] = function(args){
+    this.operation_names[21] = "RET";
+    this.operations[21] = function(args){
         if(self.return_stack.length > 0){
             self.ip = self.return_stack.pop() + 1;
         }else{
@@ -227,8 +233,8 @@ function VM(code, functions, function_links){
         }
     }
     // call
-    this.operation_names[21] = "CALL";
-    this.operations[21] = function(args){
+    this.operation_names[22] = "CALL";
+    this.operations[22] = function(args){
         var func = self.call_functions[args[1]]
         if(typeof func[1] === "function"){
             var arg_count = func[2];
@@ -240,15 +246,27 @@ function VM(code, functions, function_links){
         }
     }
     // add to stack pointer
-    this.operation_names[22] = "SP_ADD";
-    this.operations[22] = function(args){
+    this.operation_names[23] = "SP_ADD";
+    this.operations[23] = function(args){
         self.sp += args[1];
         self.ip++;
     }
     // sub from stack pointer
-    this.operation_names[23] = "SP_SUB";
-    this.operations[23] = function(args){
+    this.operation_names[24] = "SP_SUB";
+    this.operations[24] = function(args){
         self.sp -= args[1];
+        self.ip++;
+    }
+    // div float
+    this.operation_names[25] = "DIV_FLOAT";
+    this.operations[25] = function(args){
+        self.data[self.sp + args[1]] = self.data[self.sp + args[2]] / self.data[self.sp + args[3]];
+        self.ip++;
+    }
+    // float to int
+    this.operation_names[26] = "FLOAT_TO_INT";
+    this.operations[26] = function(args){
+        self.data[self.sp + args[1]] = Math.floor(self.data[self.sp + args[2]]);
         self.ip++;
     }
 }

@@ -40,6 +40,7 @@ pub struct Type{
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BaseType{
     Int,
+    Float,
     Void,
 }
 
@@ -61,12 +62,21 @@ impl Type{
         Self{base: BaseType::Int, pointer_count: 0}
     }
 
+    pub fn float()->Self{
+        Self{base: BaseType::Float, pointer_count: 0}
+    }
+
     pub fn from_type<'b, 'a>(t: &'b TypeIm<'a>)->Result<Self, &'b TypeIm<'a>>{
         if let Some(base) = BaseType::from_str(t.base.token_str()){
             Ok(Self{base, pointer_count: t.pointer_count as u8})
         }else{
             Err(t)
         }
+    }
+
+    pub fn autocast(&self, into: &Type)->bool{
+        (self.base == into.base && self.pointer_count == into.pointer_count)
+            || (self == &Type::int() && into == &Type::float())
     }
 }
 
@@ -75,6 +85,8 @@ impl BaseType{
     fn from_str(s: &str)->Option<Self>{
         match s{
             "int" => Some(BaseType::Int),
+            "void" => Some(BaseType::Void),
+            "float" => Some(BaseType::Float),
             _ => None
         }
     }

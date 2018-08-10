@@ -227,7 +227,12 @@ impl<'a> Preprocessor<'a>{
     /// panic if `char_iter` iterator is empty
     fn eat_numeric(&self, char_iter: &mut CharsIter<'a>)->Result<TokenData<'a>, Error<'a>>{
         let int_range = self.get_matching_range(char_iter, |x| x.is_digit(10));
-        Ok(TokenData::new(self.code_text, int_range, TokenType::Value))
+        let _dot_range = self.get_matching_range(char_iter, |x| x == '.');
+        let _float_range = self.get_matching_range(char_iter, |x| x.is_digit(10));
+        let _exp = self.get_matching_range(char_iter, |x| x == 'e');
+        let _minus = self.get_matching_range(char_iter, |x| x == '-');
+        let exp_value = self.get_matching_range(char_iter, |x| x.is_digit(10));
+        Ok(TokenData::new(self.code_text, (int_range.0, exp_value.1), TokenType::Value))
     }
 
 
