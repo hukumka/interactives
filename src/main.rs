@@ -123,6 +123,9 @@ fn main() {
             Root::FunctionDefinition(x) => {
                 res = compiler.register_function_definition(x).ok();
             }
+            Root::FunctionDeclaration(x) => {
+                res = compiler.register_function_declaration(x).ok();
+            }
         }
     }
 
@@ -138,13 +141,30 @@ fn main() {
             .collect()
     });
 
-    let function_entry_points: Vec<(usize, usize)> = if let Some(res) = res{
-        //compiler.print();
-        res.iter().map(|x| *x).enumerate().collect()
-    }else {
+    let res = if let Some(res) = res{
+        res
+    }else{
         Error::print_errors(compiler.errors(), &line_starts);
         return;
     };
+
+    let mut function_entry_points = vec![];
+    let mut function_links = vec![];
+    let mut func_def_id = 0;
+    for r in &syntax_tree{
+        match r{
+            Root::VariableDefinition(_) => {},
+            Root::FunctionDefinition(func) => {
+                let id = compiler.get_func_id(func.name.token_str()).unwrap();
+                function_entry_points.push((id, res[func_def_id]));
+                func_def_id += 1;
+            },
+            Root::FunctionDeclaration(func) => {
+                let id = compiler.get_func_id(func.name.token_str()).unwrap();
+                function_links.push((id, func.name.token_str().to_string()));
+            }
+        }
+    }
 
     // get template
     let mut template_file = File::open(template).unwrap();
@@ -153,7 +173,7 @@ fn main() {
 
     let mut vars = HashMap::new();
     vars.insert("code_html".to_string(), page_string(&syntax_tree, &compiler));
-    vars.insert("code_js".to_string(), js_string(&compiler, &function_entry_points));
+    vars.insert("code_js".to_string(), js_string(&compiler, &function_entry_points, &function_links));
     let res = strfmt(&template, &vars).unwrap();
 
     let mut out = File::create(output).unwrap();
@@ -172,9 +192,9 @@ fn page_string<'a>(syntax_tree: &[Root<'a>], compiler: &Compiler)->String{
     res
 }
 
-fn js_string(compiler: &Compiler, function_entry_points: &[(usize, usize)])->String{
+fn js_string(compiler: &Compiler, function_entry_points: &[(usize, usize)], function_links: &[(usize, String)])->String{
     let mut res = String::new();
-    write_compiled_to_js(&mut res, &compiler, function_entry_points).unwrap();
+    write_compiled_to_js(&mut res, &compiler, function_entry_points, function_links).unwrap();
     res
 }
 
@@ -190,7 +210,12 @@ fn js_string(compiler: &Compiler, function_entry_points: &[(usize, usize)])->Str
 /// * `function_entry_points` - array of pairs (function_id, function_start) where function_id is
 /// id of compiled function provided by `compiler` and function_start - offset of function entry
 /// point in compiled bytecode
-fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, function_entry_points: &[(usize, usize)])->std::fmt::Result{
+fn write_compiled_to_js<'a, T: Write>(
+    writer: &mut T, 
+    compiler: &Compiler<'a>, 
+    function_entry_points: &[(usize, usize)], 
+    function_links: &[(usize, String)], 
+)->std::fmt::Result{
     write!(writer, "var compiled = {{commands: [")?;
     let mut iter = compiler.code().iter();
     if let Some(op) = iter.next(){
@@ -208,6 +233,14 @@ fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, f
     for (fid, entry) in iter {
         write!(writer, ",[{}, {}]", fid, entry)?;
     }
+    write!(writer, "], function_links: [")?;
+    let mut iter = function_links.iter();
+    if let Some((fid, entry)) = iter.next(){
+        write!(writer, "[{}, '{}']", fid, entry)?;
+    }
+    for (fid, entry) in iter {
+        write!(writer, ",[{}, '{}']", fid, entry)?;
+    }
     write!(writer, "], statements: [")?;
     let mut iter = compiler.get_debug_info().statements_offsets().iter();
     if let Some(i) = iter.next(){
@@ -216,6 +249,7 @@ fn write_compiled_to_js<'a, T: Write>(writer: &mut T, compiler: &Compiler<'a>, f
     for i in iter{
         write!(writer, ", {}", i)?;
     }
+
     write!(writer, "], variable_transactions: [")?;
     let mut iter = compiler.get_debug_info().get_variable_transactions().iter();
     if let Some(i) = iter.next(){

@@ -1,3 +1,15 @@
+    functions = []
+
+    functions['alert'] = {
+        arg_count: 1, 
+        func: function(x){
+            console.log(x);
+            return 24;
+        }
+    };
+    var function_links = compiled.function_links.map(x => [x[0], functions[x[1]].func, functions[x[1]].arg_count]);
+
+
     function PersistentStack(parent, value){
         this.parent = parent
         this.value = value
@@ -26,7 +38,7 @@
     }
 
 
-    var vm = new VM(compiled.commands, compiled.function_enters)
+    var vm = new VM(compiled.commands, compiled.function_enters, function_links)
 
     function VariableManager(transactions){
         this.transactions = transactions;

@@ -1,14 +1,24 @@
-function VM(code, functions){
+function VM(code, functions, function_links){
     this.sp = 0;
     this.ip = 0;
     this.code = code;
-    this.functions = functions;
+    this.functions = [];
+    this.call_functions = [];
+    this.all_functions = []
     this.breakpoints = [];
     this.break_on_return = false;
     this.data = [];
     this.return_stack = [];
 
     var self = this;
+
+    for(var i=0; i<functions.length; ++i){
+        this.call_functions[functions[i][0]] = functions[i]
+        this.functions[i] = functions[i]
+    }
+    for(var i=0; i<function_links.length; ++i){
+        this.call_functions[function_links[i][0]] = function_links[i]
+    }
 
     this.run = function(){
         while(true){
@@ -41,6 +51,11 @@ function VM(code, functions){
                 break;
             }
             if(this.return_stack.length < depth){
+                var command = this.code[this.ip];
+                var command_id = command[0];
+                if(this.operation_names[command_id] === 'SP_SUB'){
+                    var res = this.operations[command_id](command);
+                }
                 break;
             }
             if(this.breakpoints.includes(this.ip)){
@@ -214,8 +229,15 @@ function VM(code, functions){
     // call
     this.operation_names[21] = "CALL";
     this.operations[21] = function(args){
-        self.return_stack.push(self.ip);
-        self.ip = self.functions[args[1]][1];
+        var func = self.call_functions[args[1]]
+        if(typeof func[1] === "function"){
+            var arg_count = func[2];
+            self.data[self.sp] = func[1](...self.data.slice(self.sp+1, self.sp+arg_count+1))
+            self.ip++;
+        }else{
+            self.return_stack.push(self.ip);
+            self.ip = func[1];
+        }
     }
     // add to stack pointer
     this.operation_names[22] = "SP_ADD";

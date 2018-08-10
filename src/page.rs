@@ -10,6 +10,7 @@ use syntax_tree::{
     VariableDefinition,
     Variable,
     FunctionDefinition,
+    FunctionDeclaration,
     Block,
     Expression,
     ExpressionData,
@@ -212,6 +213,9 @@ impl<'a> PageElement<'a> for Root<'a>{
             },
             Root::FunctionDefinition(ref func) => {
                 func.write_page(writer, context)
+            },
+            Root::FunctionDeclaration(ref func) => {
+                func.write_page(writer, context)
             }
         }
     }
@@ -397,6 +401,24 @@ fn write_expression_brackets<'a, T: Write>(writer: &mut T, context: &mut Context
     Ok(())
 }
 
+impl<'a> PageElement<'a> for FunctionDeclaration<'a>{
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
+        html!{writer, context,
+            line{}
+            span(class="function-head")[
+                {self.return_type}
+                {" "}
+                span(class="function-name")[
+                    {self.name}
+                ]
+                span(class="operator")[{"("}]
+                coma{self.arguments.as_slice()}
+                span(class="operator")[{");"}]
+            ]
+        }
+        Ok(())
+    }
+}
 
 impl<'a> PageElement<'a> for FunctionDefinition<'a>{
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{

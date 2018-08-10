@@ -8,7 +8,8 @@ use error::syntax_tree_parser::*;
 #[derive(Debug)]
 pub enum Root<'a>{
     FunctionDefinition(FunctionDefinition<'a>),
-    VariableDefinition(VariableDefinition<'a>)
+    FunctionDeclaration(FunctionDeclaration<'a>),
+    VariableDefinition(VariableDefinition<'a>),
 }
 
 
@@ -18,6 +19,13 @@ pub struct FunctionDefinition<'a>{
     pub arguments: Vec<Variable<'a>>,
     pub name: &'a TokenData<'a>,
     pub body: Block<'a>,
+}
+
+#[derive(Debug)]
+pub struct FunctionDeclaration<'a>{
+    pub return_type: Type<'a>,
+    pub arguments: Vec<Variable<'a>>,
+    pub name: &'a TokenData<'a>,
 }
 
 #[derive(Debug)]
@@ -198,6 +206,7 @@ impl<'a> Parseable<'a> for Root<'a> {
         // Root is either 
         // VariableDefinition: [Type, Name, Operator(=), Expression, Operator(;), ..]
         // FunctionDefinition: [Type, Name, Layer(Arguments), Layer{Block}]
+        // FunctionDeclaration: [Type, Name, Layer(Arguments), Operator(;)]
         // start same for both
         let type_ = Type::parse(walker, error_stream)?;
         let name = expect_or_put_error!(
@@ -224,17 +233,25 @@ impl<'a> Parseable<'a> for Root<'a> {
                 | error_stream << ERROR_PARSING_ROOT_EXPECT_ROOT
             )?;
             let args = FunctionDefinition::parse_arguments(&mut args_walker, error_stream);
-            let mut body_walker = expect_or_put_error!(
-                walker.expect_layer("{")
-                | error_stream << ERROR_PARSING_FUNC_EXPECT_BODY
-            )?;
-            let body = Block::parse(&mut body_walker, error_stream);
-            Some(Root::FunctionDefinition(FunctionDefinition {
-                return_type: type_,
-                name,
-                arguments: args?,
-                body: body?
-            }))
+            if let Some(mut body_walker) = walker.expect_layer("{"){
+                let body = Block::parse(&mut body_walker, error_stream);
+                Some(Root::FunctionDefinition(FunctionDefinition {
+                    return_type: type_,
+                    name,
+                    arguments: args?,
+                    body: body?
+                }))
+            }else{
+                expect_or_put_error!(
+                    walker.expect_exact_operator(";")
+                    | error_stream << ERROR_PARSING_FUNC_EXPECT_BODY
+                )?;
+                Some(Root::FunctionDeclaration(FunctionDeclaration {
+                    return_type: type_,
+                    name,
+                    arguments: args?,
+                }))
+            }
         }
     }
 }
@@ -243,7 +260,8 @@ impl<'a> TreeItem<'a> for Root<'a>{
     fn first_token(&self)->&'a TokenData<'a>{
         match self {
             Root::FunctionDefinition(x) => x.first_token(),
-            Root::VariableDefinition(x) => x.first_token()
+            Root::FunctionDeclaration(x) => x.first_token(),
+            Root::VariableDefinition(x) => x.first_token(),
         }
     }
 }
@@ -302,6 +320,11 @@ impl<'a> FunctionDefinition<'a>{
 }
 
 impl<'a> TreeItem<'a> for FunctionDefinition<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.return_type.first_token()
+    }
+}
+impl<'a> TreeItem<'a> for FunctionDeclaration<'a>{
     fn first_token(&self)->&'a TokenData<'a>{
         self.return_type.first_token()
     }

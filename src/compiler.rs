@@ -5,6 +5,7 @@ use syntax_tree::{
     VariableDefinition,
     Variable,
     FunctionDefinition,
+    FunctionDeclaration,
     FunctionCall,
     Block,
     Statement,
@@ -154,6 +155,21 @@ impl<'a> FunctionManager<'a>{
         }
     }
 
+    fn register_function_declaration(&mut self, func: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
+        let id = self.types.len();
+        let name = func.name.token_str();
+        if self.map.get(name).is_none(){
+            let type_ = FunctionType::from_declaration(func).or_else(|t|{
+                Err(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, t.base))
+            })?;
+            self.types.push(type_);
+            self.map.insert(name, id);
+            Ok(id)
+        }else{
+            Err(Error::from_token(ERROR_COMPILER_FUNCTION_REDEFINED, func.name))
+        }
+    }
+
     fn register_function_definition(&mut self, func: &'a FunctionDefinition<'a>)->Result<usize, Error<'a>>{
         let id = self.types.len();
         let name = func.name.token_str();
@@ -169,7 +185,7 @@ impl<'a> FunctionManager<'a>{
         }
     }
 
-    fn get_function_id(&mut self, name: &'a str)->Option<usize>{
+    fn get_function_id(&self, name: &'a str)->Option<usize>{
         self.map.get(name).map(|x| *x)
     }
 }
@@ -318,6 +334,9 @@ impl<'a> Compiler<'a>{
     pub fn register_function_definition(&mut self, f: &'a FunctionDefinition<'a>)->Result<usize, Error>{
         self.functions.register_function_definition(f)
     }
+    pub fn register_function_declaration(&mut self, f: &'a FunctionDeclaration<'a>)->Result<usize, Error>{
+        self.functions.register_function_declaration(f)
+    }
 
     pub fn print(&self){
         for op in &self.operations{
@@ -327,6 +346,10 @@ impl<'a> Compiler<'a>{
 
     pub fn errors(&self)->&[Error<'a>]{
         self.errors.as_slice()
+    }
+
+    pub fn get_func_id(&self, name: &'a str)->Option<usize>{
+        self.functions.get_function_id(name)
     }
 
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>)->Option<usize>{

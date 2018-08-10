@@ -1,6 +1,7 @@
 use syntax_tree::{
     Type as TypeIm,
-    FunctionDefinition
+    FunctionDefinition,
+    FunctionDeclaration
 };
 
 
@@ -12,6 +13,14 @@ pub struct FunctionType{
 
 impl FunctionType{
     pub fn from_definition<'a>(f: &'a FunctionDefinition<'a>)->Result<Self, &'a TypeIm<'a>>{
+        let ret = Type::from_type(&f.return_type)?;
+        let args: Result<Vec<_>, &'a TypeIm<'a>> = f.arguments.iter().map(|v|{
+            Type::from_type(&v.type_)
+        }).collect();
+        let args = args?;
+        Ok(Self{ret, args})
+    }
+    pub fn from_declaration<'a>(f: &'a FunctionDeclaration<'a>)->Result<Self, &'a TypeIm<'a>>{
         let ret = Type::from_type(&f.return_type)?;
         let args: Result<Vec<_>, &'a TypeIm<'a>> = f.arguments.iter().map(|v|{
             Type::from_type(&v.type_)
