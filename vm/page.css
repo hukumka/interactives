@@ -30,6 +30,10 @@ div.code{
     border-width: 0px 2px 0px 2px;
 }
 
+#asm_code{
+    grid-area: left;
+}
+
 #controls{
     grid-area: controls;
 }

@@ -10,8 +10,7 @@
 
     <script>
         window.onload = function(){
-            vm = new VM(compiled.commands, compiled.function_enters);
-            document.getElementById("code").innerHTML = generate_code_view(vm);
+            document.getElementById("asm_code").innerHTML = generate_code_view(vm);
         }
 
         function generate_command_view(vm, op){

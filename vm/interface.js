@@ -135,6 +135,8 @@
 	    document.getElementById('run').addEventListener('click', run);
 	    document.getElementById('step').addEventListener('click', step);
 	    document.getElementById('step-in').addEventListener('click', step_in);
+
+        document.getElementById("asm_code").innerHTML = generate_code_view(vm);
 	}
 
     var lines = [];
@@ -185,6 +187,12 @@
         }
     }
 
+    function build_vm_code(elem){
+        elem.innerHTML = "<ul>" + vm.code.map(
+            x => "<li>" + vm.operation_names[code[0]] + " " + code.slice(1)
+        ) + "</ul>"
+    }
+
     function set_current(){
         if(current_line != null){
             current_line.classList.remove('current')
@@ -196,3 +204,60 @@
     }
 	addEventListener('mousemove', on_hover);
 	addEventListener('click', on_click);
+
+
+    function generate_command_view(vm, op){
+        return vm.operation_names[op[0]] + " " + op.slice(1).join(", ");
+    }
+
+    function generate_code_view(vm){
+        return "<table>"
+            + vm.code.map(function(v, i){
+                var add = "";
+                if(vm.functions.some(function(x){return x[1] == i;})){
+                    add = "<tr><td>function:</tr></td>"
+                }
+                return add + "<tr id=\"code_"+i+"\" onclick=\"toggle_breakpoints("+i+")\"><td>"+i+"</td><td>"
+                    + generate_command_view(vm, v)
+                    + "</td></tr>";
+              })
+              .join("")
+            + "</table>";
+    }
+
+    function toggle_breakpoints(i){
+        if(vm.breakpoints.includes(i)){
+            vm.breakpoints.splice(vm.breakpoints.indexOf(i), 1);
+        }else{
+            vm.breakpoints.push(i);
+        }
+        update_image(vm);
+    }
+
+    function update_image(vm){
+        for(var i=0; i<vm.code.length; ++i){
+            var e = document.getElementById("code_" + i).children[0];
+            var line = i + " ";
+            if(i == vm.ip){
+                line += "-> ";
+            }
+            if(vm.breakpoints.includes(i)){
+                line += "BR";
+            }
+            e.innerHTML = line;
+
+            var state = document.getElementById("state");
+            state.innerHTML = "<table>"
+                + "<tr><td>IP</td><td>" + vm.ip + "</td></tr>"
+                + "<tr><td>SP</td><td>" + vm.sp + "</td></tr>"
+                + "<tr><td>D</td><td>" + vm.data + "</td></tr>"
+                + "</table>"
+        }
+    }
+
+    function run(){
+        vm.run();
+        update_image(vm);
+    }
+
+

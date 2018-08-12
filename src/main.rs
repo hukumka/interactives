@@ -45,6 +45,7 @@ use compiler::{
     Operation,
     Value,
 };
+use vm_optimizer::Optimizer;
 use error::Error;
 
 
@@ -160,6 +161,7 @@ fn main() {
             .map(|x| compiler.compile_function(x))
             .collect()
     };
+    Optimizer::new(compiler.code()).optimize(compiler.code_mut());
 
     let res = if let Some(res) = res{
         res

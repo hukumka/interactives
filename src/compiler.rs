@@ -335,6 +335,10 @@ impl<'a> Compiler<'a>{
         self.operations.as_slice()
     }
 
+    pub fn code_mut(&mut self)->&mut [Operation]{
+        self.operations.as_mut_slice()
+    }
+
     pub fn get_debug_info(&self)->&DebugInfo{
         &self.debug_info
     }
