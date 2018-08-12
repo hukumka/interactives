@@ -10,6 +10,7 @@ extern crate clap;
 extern crate strfmt;
 
 
+mod vm_optimizer;
 mod error;
 mod lexer;
 mod bracket_tree;
