@@ -91,10 +91,6 @@ impl<'a> Error<'a>{
         Self{text: token.code(), code_: code, position: token.get_pos()}
     }
 
-    pub fn code(&self)->usize{
-        self.code_
-    }
-
     pub fn print_errors<T>(x: T, line_starts: &[usize])
         where T: IntoIterator<Item=&'a Error<'a>>
     {

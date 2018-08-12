@@ -65,6 +65,10 @@ impl Type{
     pub fn float()->Self{
         Self{base: BaseType::Float, pointer_count: 0}
     }
+    
+    pub fn void()->Self{
+        Self{base: BaseType::Void, pointer_count: 0}
+    }
 
     pub fn from_type<'b, 'a>(t: &'b TypeIm<'a>)->Result<Self, &'b TypeIm<'a>>{
         if let Some(base) = BaseType::from_str(t.base.token_str()){

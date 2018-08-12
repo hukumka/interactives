@@ -293,10 +293,6 @@ impl DebugInfo{
         self.variables.get(&name.get_pos()).map(|x| x.clone())
     }
 
-    pub fn get_variable_offset<'a>(&self, name: &'a TokenData<'a>)->Option<usize>{
-        self.variables.get(&name.get_pos()).map(|x| x.0)
-    }
-
     pub fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
         self.statements.get(&statement.first_token().get_pos()).map(|x| *x)
     }
@@ -348,12 +344,6 @@ impl<'a> Compiler<'a>{
     }
     pub fn register_function_declaration(&mut self, f: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
         self.functions.register_function_declaration(f)
-    }
-
-    pub fn print(&self){
-        for op in &self.operations{
-            println!("{:?}", op);
-        }
     }
 
     pub fn errors(&self)->&[Error<'a>]{
@@ -608,7 +598,7 @@ impl<'a> Compiler<'a>{
             },
             "&" => {
                 let (type_, is_rvalue) = self.compile_expression(&op.right)?;
-                let id = self.take_latest_expr();
+                let _id = self.take_latest_expr();
                 let _res_id = self.put_expr();
                 if is_rvalue{
                     Some((type_.pointer(), false))
@@ -619,7 +609,7 @@ impl<'a> Compiler<'a>{
             },
             "*" => {
                 let type_ = self.compile_expression_rvalue(&op.right)?;
-                let id = self.take_latest_expr();
+                let _id = self.take_latest_expr();
                 let _res_id = self.put_expr();
                 if let Some(type_) = type_.dereference(){
                     Some((type_, true))
@@ -758,7 +748,7 @@ impl<'a> Compiler<'a>{
             Some((Type::int(), false))
         }else if op == "="{
             let (type_, is_reference) = self.compile_expression(&operator.left)?;
-            if is_reference{
+            if is_reference && type_ != Type::void(){
                 let _right = self.compile_expression_of_type(&operator.right, type_)?;
                 let r = self.take_latest_expr();
                 let l = self.take_latest_expr();

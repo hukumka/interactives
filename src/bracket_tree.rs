@@ -128,11 +128,6 @@ impl<'a> BracketTreeWalker<'a>{
         self.expect_token_of_type_checked(TokenType::Value, |_| true)
     }
 
-    /// Returns `TokenData` corresponding to operator if it is next token, and move to next.
-    pub fn expect_operator(&mut self)->Option<&'a TokenData<'a>>{
-        self.expect_token_of_type_checked(TokenType::Operator, |_| true)
-    }
-
     /// Returns `TokenData` corresponding to operator if it is next token and it's equal to 'op' and move to next.
     pub fn expect_exact_operator(&mut self, op: &str)->Option<&'a TokenData<'a>>{
         self.expect_operator_checked(|x| x == op)
