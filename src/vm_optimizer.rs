@@ -51,7 +51,6 @@ impl Optimizer{
     }
 
     fn optimize_local_variable_get(&mut self, code: &mut [Operation]){
-        return;
         for i in 0..(code.len()-1){
             if Self::is_local_get([&code[i], &code[i+1]]) && !self.has_jump_in_range(i, i+1){
                 let var_id = code[i].args[1];

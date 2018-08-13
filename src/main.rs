@@ -43,6 +43,7 @@ use page::{
 use compiler::{
     Compiler,
     Operation,
+    DebugInfo,
     Value,
 };
 use vm_optimizer::Optimizer;
@@ -116,86 +117,24 @@ fn main() {
 
     // compile
     println!("Write compiled");
-    let mut compiler = Compiler::new();
-    let mut res = true;
-    let mut errors = vec![];
-    for r in &syntax_tree{
-        match r{
-            Root::VariableDefinition(_) => {
-                unimplemented!("Global variable yet to be supported")
-            },
-            Root::FunctionDefinition(x) => {
-                match compiler.register_function_definition(x){
-                    Ok(_) => {},
-                    Err(e) => {
-                        res = false;
-                        errors.push(e);
-                    }
-                }
-            }
-            Root::FunctionDeclaration(x) => {
-                match compiler.register_function_declaration(x){
-                    Ok(_) => {},
-                    Err(e) => {
-                        res = false;
-                        errors.push(e);
-                    }
-                }
-            }
+    let (mut code, debug_info) = match Compiler::new().compile(&syntax_tree){
+        Ok(res) => res,
+        Err(errors) => {
+            Error::print_errors(&errors, &line_starts);
+            panic!("Execution aborted due to present error.")
         }
-    }
-
-    if !res{
-        Error::print_errors(&errors, &line_starts);
-        return;
-    }
-
-    let res: Option<Vec<_>> = {
-        syntax_tree.iter()
-            .filter_map(|x|{
-                match x{
-                    Root::FunctionDefinition(x) => Some(x),
-                    _ => None
-                }
-            })
-            .map(|x| compiler.compile_function(x))
-            .collect()
-    };
-    Optimizer::new(compiler.code()).optimize(compiler.code_mut());
-
-    let res = if let Some(res) = res{
-        res
-    }else{
-        Error::print_errors(compiler.errors(), &line_starts);
-        return;
     };
 
-    let mut function_entry_points = vec![];
-    let mut function_links = vec![];
-    let mut func_def_id = 0;
-    for r in &syntax_tree{
-        match r{
-            Root::VariableDefinition(_) => {},
-            Root::FunctionDefinition(func) => {
-                let id = compiler.get_func_id(func.name.token_str()).unwrap();
-                function_entry_points.push((id, res[func_def_id]));
-                func_def_id += 1;
-            },
-            Root::FunctionDeclaration(func) => {
-                let id = compiler.get_func_id(func.name.token_str()).unwrap();
-                function_links.push((id, func.name.token_str().to_string()));
-            }
-        }
-    }
-
+    Optimizer::new(&code).optimize(&mut code);
+    
     // get template
     let mut template_file = File::open(template).unwrap();
     let mut template = String::new();
     template_file.read_to_string(&mut template).unwrap();
 
     let mut vars = HashMap::new();
-    vars.insert("code_html".to_string(), page_string(&syntax_tree, &compiler));
-    vars.insert("code_js".to_string(), js_string(&compiler, &function_entry_points, &function_links));
+    vars.insert("code_html".to_string(), page_string(&syntax_tree, &debug_info));
+    vars.insert("code_js".to_string(), js_string(&code, &debug_info));
     let res = strfmt(&template, &vars).unwrap();
 
     let mut out = File::create(output).unwrap();
@@ -204,42 +143,26 @@ fn main() {
 }
 
 
-fn page_string<'a>(syntax_tree: &[Root<'a>], compiler: &Compiler)->String{
+fn page_string<'a>(syntax_tree: &[Root<'a>], debug_info: &DebugInfo)->String{
     let mut res = String::new();
     let mut context = Context::new();
-    context.set_debug_info(compiler.get_debug_info());
+    context.set_debug_info(debug_info);
     for r in syntax_tree{
         r.write_page(&mut res, &mut context).unwrap();
     }
     res
 }
 
-fn js_string(compiler: &Compiler, function_entry_points: &[(usize, usize)], function_links: &[(usize, String)])->String{
+fn js_string(code: &[Operation], debug_info: &DebugInfo)->String{
     let mut res = String::new();
-    write_compiled_to_js(&mut res, &compiler, function_entry_points, function_links).unwrap();
+    write_compiled_to_js(&mut res, code, debug_info).unwrap();
     res
 }
 
 
-/// Write virtual machine (vm/vm.js) bytecode of compiled code into writer
-/// 
-/// # Arguments
-/// 
-/// * `writer` - buffer into which code will be writter. May be `std::fs::File`
-/// 
-/// * `compiler` - instance of `Compiler`, which compiled syntax tree into code
-/// 
-/// * `function_entry_points` - array of pairs (function_id, function_start) where function_id is
-/// id of compiled function provided by `compiler` and function_start - offset of function entry
-/// point in compiled bytecode
-fn write_compiled_to_js<'a, T: Write>(
-    writer: &mut T, 
-    compiler: &Compiler<'a>, 
-    function_entry_points: &[(usize, usize)], 
-    function_links: &[(usize, String)], 
-)->std::fmt::Result{
+fn write_compiled_to_js<'a, T: Write>(writer: &mut T, code: &[Operation],debug_info: &DebugInfo)->std::fmt::Result{
     write!(writer, "var compiled = {{commands: [")?;
-    let mut iter = compiler.code().iter();
+    let mut iter = code.iter();
     if let Some(op) = iter.next(){
         write_operation_to_js(writer, op)?;
     }
@@ -248,7 +171,7 @@ fn write_compiled_to_js<'a, T: Write>(
         write_operation_to_js(writer, op)?;
     }
     write!(writer, "], function_enters: [")?;
-    let mut iter = function_entry_points.iter();
+    let mut iter = debug_info.get_function_entry_points().iter();
     if let Some((fid, entry)) = iter.next(){
         write!(writer, "[{}, {}]", fid, entry)?;
     }
@@ -256,7 +179,7 @@ fn write_compiled_to_js<'a, T: Write>(
         write!(writer, ",[{}, {}]", fid, entry)?;
     }
     write!(writer, "], function_links: [")?;
-    let mut iter = function_links.iter();
+    let mut iter = debug_info.get_function_links().iter();
     if let Some((fid, entry)) = iter.next(){
         write!(writer, "[{}, '{}']", fid, entry)?;
     }
@@ -264,7 +187,7 @@ fn write_compiled_to_js<'a, T: Write>(
         write!(writer, ",[{}, '{}']", fid, entry)?;
     }
     write!(writer, "], statements: [")?;
-    let mut iter = compiler.get_debug_info().statements_offsets().iter();
+    let mut iter = debug_info.statements_offsets().iter();
     if let Some(i) = iter.next(){
         write!(writer, "{}", i)?;
     }
@@ -273,7 +196,7 @@ fn write_compiled_to_js<'a, T: Write>(
     }
 
     write!(writer, "], variable_transactions: [")?;
-    let mut iter = compiler.get_debug_info().get_variable_transactions().iter();
+    let mut iter = debug_info.get_variable_transactions().iter();
     if let Some(i) = iter.next(){
         write!(writer, "{{name: '{}', add: {}, pos: {}, id: {}, pair: {}}}", i.name, i.add, i.pos, i.var_id, i.pair)?;
     }

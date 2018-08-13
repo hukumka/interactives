@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use lexer::TokenData;
 use syntax_tree::{
+    Root,
     VariableDefinition,
     Variable,
     FunctionDefinition,
@@ -212,6 +213,11 @@ pub struct DebugInfo{
     statements_by_id: Vec<usize>,
     variables_transactions: Vec<VariableTransaction>,
     variables_transactions_stack: Vec<usize>,
+
+    /// function offset table. Contains pairs (function_id, offset)
+    functions: Vec<(usize, usize)>,
+    /// function links. Contains pairs (function_id, function_name)
+    function_links: Vec<(usize, String)>,
 }
 
 
@@ -233,7 +239,16 @@ impl DebugInfo{
             statements_by_id: vec![],
             variables_transactions: vec![],
             variables_transactions_stack: vec![],
+            functions: vec![],
+            function_links: vec![],
         }
+    }
+
+    pub fn get_function_entry_points(&self)->&[(usize, usize)]{
+        self.functions.as_slice()
+    }
+    pub fn get_function_links(&self)->&[(usize, String)]{
+        self.function_links.as_slice()
     }
 
     pub fn get_variable_transactions(&self)->&[VariableTransaction]{
@@ -331,34 +346,48 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    pub fn code(&self)->&[Operation]{
-        self.operations.as_slice()
-    }
-
-    pub fn code_mut(&mut self)->&mut [Operation]{
-        self.operations.as_mut_slice()
-    }
-
-    pub fn get_debug_info(&self)->&DebugInfo{
-        &self.debug_info
-    }
-
-    pub fn register_function_definition(&mut self, f: &'a FunctionDefinition<'a>)->Result<usize, Error<'a>>{
-        self.functions.register_function_definition(f)
-    }
-    pub fn register_function_declaration(&mut self, f: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
-        self.functions.register_function_declaration(f)
-    }
-
-    pub fn errors(&self)->&[Error<'a>]{
-        self.errors.as_slice()
-    }
-
-    pub fn get_func_id(&self, name: &'a str)->Option<usize>{
-        self.functions.get_function_id(name)
+    pub fn compile(mut self, tree: &'a [Root<'a>])->Result<(Vec<Operation>, DebugInfo), Vec<Error<'a>>>{
+        // define all functions
+        for t in tree{
+            match t{
+                Root::FunctionDefinition(def) => {
+                    if let Err(e) = self.functions.register_function_definition(def){
+                        self.errors.push(e);
+                    }
+                },
+                Root::FunctionDeclaration(decl) => {
+                    match self.functions.register_function_declaration(decl){
+                        Ok(i) => {
+                            self.debug_info.function_links.push((i, decl.name.token_str().to_string()));
+                        },
+                        Err(e) => {
+                            self.errors.push(e);
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+        // compile all functions
+        for t in tree{
+            match t{
+                Root::FunctionDefinition(def) => {
+                    let _ = self.compile_function(def);
+                },
+                _ => {}
+            }
+        }
+        if self.errors.is_empty(){
+            Ok((self.operations, self.debug_info))
+        }else{
+            Err(self.errors)
+        }
     }
 
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>)->Option<usize>{
+        let function_id = self.functions.get_function_id(func.name.token_str())?;
+        self.debug_info.functions.push((function_id, self.operations.len()));
+
         self.current_function = Some(func);
         let start = self.operations.len();
         self.variables.alloc_empty();
