@@ -197,6 +197,9 @@
         if(current_line != null){
             current_line.classList.remove('current')
         }
+        if(!vm.is_running){
+            return;
+        }
         current_line = get_current_line(vm.ip)
         current_line.classList.add('current')
 

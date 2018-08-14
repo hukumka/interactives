@@ -308,7 +308,7 @@ impl<'a> PageElement<'a> for Expression<'a>{
             },
             ExpressionData::FunctionCall(fc) => {
                 html!{writer, context,
-                    span(class="function-name")[{fc.name}]
+                    span(class="function-name")[{fc.func}]
                     span(class="operator")[{"("}]
                     coma{&fc.arguments}
                     span(class="operator")[{")"}]

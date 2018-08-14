@@ -4,7 +4,6 @@ use lexer::TokenData;
 use syntax_tree::{
     Root,
     VariableDefinition,
-    Variable,
     FunctionDefinition,
     FunctionDeclaration,
     FunctionCall,
@@ -26,7 +25,8 @@ use error::Error;
 use error::compiler::*;
 use types::{
     Type,
-    FunctionType
+    FunctionType,
+    BaseType,
 };
 
 
@@ -88,118 +88,132 @@ pub enum Value{
 
 
 struct VariableManager<'a>{
-    namespaces: Vec<HashMap<&'a str, usize>>,
-    types: Vec<Type>,
-    definitions: Vec<&'a Variable<'a>>
+    globals: HashMap<&'a str, VariableHandle<'a>>,
+    locals: Vec<HashMap<&'a str, VariableHandle<'a>>>,
+    locals_len: usize,
 }
 
 impl<'a> VariableManager<'a>{
     fn new()->Self{
         Self{
-            namespaces: vec![],
-            types: vec![],
-            definitions: vec![],
+            globals: HashMap::new(),
+            locals: vec![],
+            locals_len: 0,
         }
     }
 
-    fn push(&mut self){
-        self.namespaces.push(HashMap::new());
+    fn push_namespace(&mut self){
+        self.locals.push(HashMap::new());
     }
 
-    fn pop(&mut self)->Option<()>{
-        self.namespaces.pop().map(|_| ())
+    fn pop_namespace(&mut self)->Option<()>{
+        self.locals.pop().map(|_| ())
     }
 
-    fn alloc_empty(&mut self){
-        self.namespaces.clear();
-        self.types.clear();
-        self.definitions.clear();
+    fn clear_locals(&mut self){
+        self.locals.clear();
+        self.locals_len = 0;
     }
 
-    fn define_variable(&mut self, var: &'a Variable<'a>)->Result<usize, Error<'a>>{
-        let id = self.definitions.len() + 1;
-        let name = var.name.token_str();
-        let type_ = Type::from_type(&var.type_).or_else(|x|{
-            Err(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, x.base))
-        })?;
-        let top = self.namespaces.last_mut().unwrap();
-        if top.get(name).is_some(){
-            Err(Error::from_token(
-                ERROR_COMPILER_VARIABLE_REDEFINED,
-                var.name
-            ))
+    fn alloc_space_for_return_value(&mut self){
+        assert_eq!(self.locals_len, 0);
+        assert!(!self.locals.is_empty());
+        self.locals_len = 1;
+    }
+
+    fn locals_len(&self)->usize{
+        self.locals_len
+    }
+
+    fn register_variable(&mut self, name: &'a TokenData<'a>, type_: Type)->Result<VariableHandleAddress, Error<'a>>{
+        let (namespace, address) = if let Some(namespace) = self.locals.last_mut(){
+            (namespace, VariableHandleAddress::Local(self.locals_len))
         }else{
-            top.insert(name, id);
-            self.types.push(type_);
-            self.definitions.push(var);
-            Ok(id)
-        }
-    }
-
-    fn get_id(&mut self, name: &'a str)->Option<usize>{
-        for n in &self.namespaces{
-            if let Some(id) = n.get(name){
-                return Some(*id);
+            let addr = self.globals.len();
+            (&mut self.globals, VariableHandleAddress::Global(addr))
+        };
+        if namespace.get(name.token_str()).is_some(){
+            Err(Error::from_token(ERROR_COMPILER_VARIABLE_REDEFINED, name))
+        }else{
+            if let VariableHandleAddress::Local(_) = address{
+                self.locals_len += 1;
             }
-        }
-        None
-    }
-
-    fn get_type(&self, id: usize)->Type{
-        self.types[id-1].clone()
-    }
-
-    fn len(&self)->usize{
-        self.namespaces.iter().map(|x| x.len()).sum::<usize>() + 1
-    }
-}
-
-
-struct FunctionManager<'a>{
-    map: HashMap<&'a str, usize>,
-    types: Vec<FunctionType>,
-}
-
-impl<'a> FunctionManager<'a>{
-    fn new()->Self{
-        Self{
-            map: HashMap::new(),
-            types: vec![]
-        }
-    }
-
-    fn register_function_declaration(&mut self, func: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
-        let id = self.types.len();
-        let name = func.name.token_str();
-        if self.map.get(name).is_none(){
-            let type_ = FunctionType::from_declaration(func).or_else(|t|{
-                Err(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, t.base))
-            })?;
-            self.types.push(type_);
-            self.map.insert(name, id);
-            Ok(id)
-        }else{
-            Err(Error::from_token(ERROR_COMPILER_FUNCTION_REDEFINED, func.name))
+            namespace.insert(name.token_str(), VariableHandle{
+                type_,
+                name,
+                address,
+            });
+            Ok(address)
         }
     }
 
     fn register_function_definition(&mut self, func: &'a FunctionDefinition<'a>)->Result<usize, Error<'a>>{
-        let id = self.types.len();
-        let name = func.name.token_str();
-        if self.map.get(name).is_none(){
-            let type_ = FunctionType::from_definition(func).or_else(|t|{
-                Err(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, t.base))
-            })?;
-            self.types.push(type_);
-            self.map.insert(name, id);
+        assert!(self.locals.is_empty()); // only in global scope
+        let type_ = FunctionType::from_definition(func)
+            .map_err(|e| Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()))?;
+        let type_ = Type::function_pointer(type_);
+        let address = self.register_variable(func.name, type_)?;
+        if let VariableHandleAddress::Global(id) = address{
             Ok(id)
         }else{
-            Err(Error::from_token(ERROR_COMPILER_FUNCTION_REDEFINED, func.name))
+            unreachable!()
+        }
+    }
+    
+    fn register_function_declaration(&mut self, func: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
+        assert!(self.locals.is_empty()); // only in global scope
+        let type_ = FunctionType::from_declaration(func)
+            .map_err(|e| Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()))?;
+        let type_ = Type::function_pointer(type_);
+        let address = self.register_variable(func.name, type_)?;
+        if let VariableHandleAddress::Global(id) = address{
+            Ok(id)
+        }else{
+            unreachable!()
         }
     }
 
-    fn get_function_id(&self, name: &'a str)->Option<usize>{
-        self.map.get(name).map(|x| *x)
+    fn get_function_id(&self, name: &'a TokenData<'a>)->Option<usize>{
+        match self.globals.get(name.token_str()){
+            Some(VariableHandle{address: VariableHandleAddress::Global(x), ..}) => {
+                Some(*x)
+            },
+            _ => None
+        }
+    }
+
+    fn get_variable(&self, name: &'a str)->Option<&VariableHandle<'a>>{
+        for namespace in self.locals.iter().rev(){
+            if let Some(x) = namespace.get(name){
+                return Some(x);
+            }
+        }
+        self.globals.get(name)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct VariableHandle<'a>{
+    pub type_: Type,
+    pub name: &'a TokenData<'a>,
+    pub address: VariableHandleAddress,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum VariableHandleAddress{
+    Global(usize),
+    Local(usize)
+}
+
+impl VariableHandleAddress{
+    pub fn to_string(&self)->String{
+        use std::fmt::Write;
+        let mut res = String::new();
+        match self{
+            VariableHandleAddress::Global(a) => write!(res, "${}", a).unwrap(),
+            VariableHandleAddress::Local(a) => write!(res, "{}", a).unwrap(),
+        }
+        res
     }
 }
 
@@ -207,7 +221,7 @@ impl<'a> FunctionManager<'a>{
 #[derive(Debug)]
 pub struct DebugInfo{
     /// Map from offset of variable reference to its offset in stack
-    variables: HashMap<usize, (usize, usize)>,
+    variables: HashMap<usize, (VariableHandleAddress, usize)>,
     /// Map from offset of statement to its address in VM code
     statements: HashMap<usize, usize>,
     statements_by_id: Vec<usize>,
@@ -266,20 +280,25 @@ impl DebugInfo{
         }
     }
 
-    fn reg_variable_offset<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: usize){
-        let tr_id = self.variables_transactions_stack[stack_offset-1];
+    fn reg_variable_offset<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: VariableHandleAddress){
+        let tr_id = match stack_offset{
+            VariableHandleAddress::Local(x) => self.variables_transactions_stack[x-1],           
+            _ => 0
+        };
         self.variables.insert(name.get_pos(), (stack_offset, tr_id));
     }
 
-    fn push_variable<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: usize, code_offset: usize){
-        self.variables_transactions_stack.push(self.variables_transactions.len());
-        self.variables_transactions.push(VariableTransaction{
-            pos: code_offset,
-            name: name.token_str().to_string(),
-            add: true,
-            var_id: self.variables_transactions_stack.len(),
-            pair: 0,
-        });
+    fn push_variable<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: VariableHandleAddress, code_offset: usize){
+        if let VariableHandleAddress::Local(_) = stack_offset{
+            self.variables_transactions_stack.push(self.variables_transactions.len());
+            self.variables_transactions.push(VariableTransaction{
+                pos: code_offset,
+                name: name.token_str().to_string(),
+                add: true,
+                var_id: self.variables_transactions_stack.len(),
+                pair: 0,
+            });
+        }
         self.reg_variable_offset(name, stack_offset);
     }
 
@@ -304,7 +323,7 @@ impl DebugInfo{
         self.statements.insert(statement.first_token().get_pos(), vm_offset);
     }
 
-    pub fn get_variable_data<'a>(&self, name: &'a TokenData<'a>)->Option<(usize, usize)>{
+    pub fn get_variable_data<'a>(&self, name: &'a TokenData<'a>)->Option<(VariableHandleAddress, usize)>{
         self.variables.get(&name.get_pos()).map(|x| x.clone())
     }
 
@@ -327,7 +346,6 @@ pub struct Compiler<'a>{
     variables: VariableManager<'a>,
     temp_values: usize,
     current_function: Option<&'a FunctionDefinition<'a>>,
-    functions: FunctionManager<'a>,
     debug_info: DebugInfo,
     errors: Vec<Error<'a>>
 }
@@ -338,7 +356,6 @@ impl<'a> Compiler<'a>{
         Self{
             operations: vec![],
             variables: VariableManager::new(),
-            functions: FunctionManager::new(),
             temp_values: 0,
             current_function: None,
             debug_info: DebugInfo::new(),
@@ -351,12 +368,12 @@ impl<'a> Compiler<'a>{
         for t in tree{
             match t{
                 Root::FunctionDefinition(def) => {
-                    if let Err(e) = self.functions.register_function_definition(def){
+                    if let Err(e) = self.variables.register_function_definition(def){
                         self.errors.push(e);
                     }
                 },
                 Root::FunctionDeclaration(decl) => {
-                    match self.functions.register_function_declaration(decl){
+                    match self.variables.register_function_declaration(decl){
                         Ok(i) => {
                             self.debug_info.function_links.push((i, decl.name.token_str().to_string()));
                         },
@@ -385,28 +402,33 @@ impl<'a> Compiler<'a>{
     }
 
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>)->Option<usize>{
-        let function_id = self.functions.get_function_id(func.name.token_str())?;
+        let function_id = self.variables.get_function_id(func.name)?;
         self.debug_info.functions.push((function_id, self.operations.len()));
 
         self.current_function = Some(func);
         let start = self.operations.len();
-        self.variables.alloc_empty();
-        self.variables.push();
+        self.variables.clear_locals();
+        self.variables.push_namespace();
+        self.variables.alloc_space_for_return_value();
         self.temp_values = 0;
         let arguments_parsed = func.arguments.iter()
             .map(|v| {
-                match self.variables.define_variable(v){
+                let type_ = Type::from_type(&v.type_).map_err(|e|{
+                   self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()));
+                   ()
+                })?;
+                match self.variables.register_variable(v.name, type_){
                     Ok(x) => {
                         self.debug_info.push_variable(v.name, x, self.operations.len());
-                        true
+                        Ok(())
                     },
                     Err(x) => {
                         self.errors.push(x);
-                        false
+                        Err(())
                     }
                 }
-            }).fold(true, |a, b| a && b);
-        if arguments_parsed{
+            }).fold(Ok(()), |a, b| a.and(b));
+        if arguments_parsed.is_ok(){
             self.compile_block(&func.body)?;
             self.operations.push(Operation{
                 value: None,
@@ -414,7 +436,7 @@ impl<'a> Compiler<'a>{
                 args: vec![]
             });
             self.current_function = None;
-            self.variables.pop().unwrap();
+            self.variables.pop_namespace().unwrap();
             // release debug info
             for _ in &func.arguments{
                 self.debug_info.pop_variable(self.operations.len());
@@ -422,7 +444,7 @@ impl<'a> Compiler<'a>{
             Some(start)
         }else{
             self.current_function = None;
-            self.variables.pop().unwrap();
+            self.variables.pop_namespace().unwrap();
             for _ in &func.arguments{
                 self.debug_info.pop_variable(self.operations.len());
             }
@@ -453,7 +475,8 @@ impl<'a> Compiler<'a>{
             },
             Statement::VariableDefinition(v) => {
                 self.debug_info.reg_statement_offset(statement, self.operations.len());
-                self.compile_variable_definition(&v)
+                let res = self.compile_variable_definition(&v);
+                res
             },
             Statement::ForLoop(l) => self.compile_for_loop(&l, statement),
             Statement::Condition(c) => {
@@ -484,25 +507,32 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_variable_definition(&mut self, var: &'a VariableDefinition<'a>)->Option<()>{
-        let id = self.variables.define_variable(&var.variable).ok()?;
         let required_type = Type::from_type(&var.variable.type_).or_else(|e|{
             self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.base));
             Err(e)
         }).ok()?;
+        let variable_address = self.variables.register_variable(&var.variable.name, required_type.clone()).ok()?;
         let _type_ = self.compile_expression_of_type(&var.set_to, required_type)?;
+        self.debug_info.push_variable(var.name(), variable_address, self.operations.len());
         let from = self.take_latest_expr();
-        self.operations.push(Operation{
-            value: None,
-            code: Code::Clone,
-            args: vec![id, from]
-        });
-        self.debug_info.push_variable(var.name(), id, self.operations.len());
+        match variable_address{
+            VariableHandleAddress::Local(addr) => {
+                self.operations.push(Operation{
+                    value: None,
+                    code: Code::Clone,
+                    args: vec![addr, from]
+                });
+            },
+            _ => {
+                unimplemented!();
+            }
+        }
         Some(())
     }
 
     fn compile_for_loop(&mut self, for_loop: &'a ForLoop<'a>, statement: &'a Statement<'a>)->Option<()>{
         let stack_floor = self.debug_info.make_stack_floor();
-        self.variables.push();
+        self.variables.push_namespace();
         let succ = match &for_loop.init{
             ForLoopInitialization::VariableDefinition(v) => self.compile_variable_definition(&v),
             ForLoopInitialization::Expression(e) => {
@@ -531,7 +561,7 @@ impl<'a> Compiler<'a>{
             args: vec![loop_start]
         });
         self.operations[jump_op].args[0] = self.operations.len(); // set jump address to after loop
-        self.variables.pop().unwrap();
+        self.variables.pop_namespace().unwrap();
         self.debug_info.recover_to_stack_floor(self.operations.len(), stack_floor);
         succ
     }
@@ -659,18 +689,31 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_expression_variable(&mut self, var: &'a TokenData<'a>)->Option<(Type, bool)>{
-        let var_id = self.variables.get_id(var.token_str()).or_else(||{
+        let variable = if let Some(v) = self.variables.get_variable(var.token_str()){
+            v.clone()
+        }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_UNDEFINED_VARIABLE, var));
-            None
-        })?;
-        let type_ = self.variables.get_type(var_id);
+            return None;
+        };
+        let type_ = variable.type_.clone();
         let id = self.put_expr();
-        self.debug_info.reg_variable_offset(var, var_id);
-        self.operations.push(Operation{
-            value: None,
-            code: Code::PointerToLocal,
-            args: vec![id, var_id]
-        });
+        self.debug_info.reg_variable_offset(var, variable.address);
+        match variable.address{
+            VariableHandleAddress::Local(address) => {
+                self.operations.push(Operation{
+                    value: None,
+                    code: Code::PointerToLocal,
+                    args: vec![id, address]
+                });
+            },
+            VariableHandleAddress::Global(address) => {
+                self.operations.push(Operation{
+                    value: None,
+                    code: Code::ConstInt,
+                    args: vec![id, address]
+                });
+            },
+        }
         Some((type_, true))
     }
 
@@ -719,11 +762,18 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_expression_function_call(&mut self, func: &'a FunctionCall<'a>)->Option<(Type, bool)>{
-        let func_id = self.functions.get_function_id(func.name.token_str()).or_else(||{
-            self.errors.push(Error::from_token(ERROR_COMPILER_UNDEFINED_FUNCTION, func.name));
-            None
-        })?;
-        let type_ = self.functions.types[func_id].clone();
+        let (type_, _) = self.compile_expression(&func.func)?;
+        let type_ = match type_{
+            Type{pointer_count:0, base: BaseType::Function(box func)} => {
+                func
+            },
+            _ => {
+                self.errors.push(Error::from_token(ERROR_COMPILER_EXPECTED_FUNCTION, func.first_token()));
+                return None;
+            }
+        };
+        let func_id = self.take_latest_expr();
+
         if func.arguments.len() == type_.args.len(){
             let sp_offset = self.put_expr(); // reserve space for result
             let res = func.arguments.iter()
@@ -748,7 +798,7 @@ impl<'a> Compiler<'a>{
             });
             res.map(|_| (type_.ret, false))
         }else{
-            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_ARGUMENTS_COUNT, func.name));
+            self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_ARGUMENTS_COUNT, func.first_token()));
             None
         }
     }
@@ -1134,7 +1184,7 @@ impl<'a> Compiler<'a>{
 
     fn put_expr(&mut self)->usize{
         self.temp_values += 1;
-        self.temp_values + self.variables.len() - 1
+        self.temp_values + self.variables.locals_len() - 1
     }
 
     fn take_latest_expr(&mut self)->usize{
@@ -1143,6 +1193,6 @@ impl<'a> Compiler<'a>{
         }else{
             warn!("Warning: Attempt to take expression value then none exists.")
         }
-        self.temp_values + self.variables.len()
+        self.temp_values + self.variables.locals_len()
     }
 }

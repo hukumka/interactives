@@ -127,8 +127,15 @@ pub enum ForLoopInitialization<'a>{
 
 #[derive(Debug)]
 pub struct FunctionCall<'a>{
-    pub name: &'a TokenData<'a>,
+    pub func: Expression<'a>,
     pub arguments: Vec<Expression<'a>>
+}
+
+
+impl<'a> TreeItem<'a> for FunctionCall<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.func.first_token()
+    }
 }
 
 
@@ -604,7 +611,7 @@ impl<'a> TreeItem<'a> for Expression<'a>{
             ExpressionData::SyffixOperator(x) => x.left.first_token(),
             ExpressionData::PrefixOperator(x) => x.operator,
             ExpressionData::BinaryOperator(x) => x.left.first_token(),
-            ExpressionData::FunctionCall(x) => x.name,
+            ExpressionData::FunctionCall(x) => x.func.first_token(),
             ExpressionData::Constant(x) => x,
             ExpressionData::Variable(x) => x,
             ExpressionData::Index(x) => x.expr.first_token()
@@ -654,7 +661,7 @@ impl<'a> Expression<'a>{
             ExpressionData::SyffixOperator(op) => op.operator,
             ExpressionData::PrefixOperator(op) => op.operator,
             ExpressionData::Index(i) => i.expr.token(),
-            ExpressionData::FunctionCall(f) => f.name,
+            ExpressionData::FunctionCall(f) => f.func.token(),
         }
     }
 
@@ -710,8 +717,10 @@ impl<'a> Expression<'a>{
 	            let arguments = Expression::parse_arguments(&mut args, error_stream)?;
 	            Some(Expression(Box::new(
 	                ExpressionData::FunctionCall(FunctionCall{
-	                    name,
-	                    arguments
+	                    func: Expression(Box::new(
+                            ExpressionData::Variable(name)
+                        )),
+	                    arguments,
 	                })
 	            )))
 	        }else{

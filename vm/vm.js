@@ -9,6 +9,8 @@ function VM(code, functions, function_links){
     this.break_on_return = false;
     this.data = [];
     this.return_stack = [];
+    
+    this.is_running = false;
 
     var self = this;
 
@@ -21,6 +23,12 @@ function VM(code, functions, function_links){
     }
 
     this.run = function(){
+        if(this.is_running === false){
+            this.is_running = true;
+            if(this.breakpoints.includes(0)){
+                return;
+            }
+        }
         while(true){
             var command = this.code[this.ip];
             var command_id = command[0];
@@ -36,6 +44,10 @@ function VM(code, functions, function_links){
     }
 
     this.step = function(statements){
+        if(this.is_running === false){
+            this.is_running = true;
+            return;
+        }
         var range = this.current_function_range()
         var statements = statements.filter(x => range[0] <= x && x < range[1])
         var depth = this.return_stack.length;
@@ -80,6 +92,7 @@ function VM(code, functions, function_links){
     this.reset = function(){
         this.ip = 0;
         this.data = [];
+        this.is_running = false;
     }
 
     this.operations = [];
@@ -235,7 +248,8 @@ function VM(code, functions, function_links){
     // call
     this.operation_names[22] = "CALL";
     this.operations[22] = function(args){
-        var func = self.call_functions[args[1]]
+        var cell_id = self.data[self.sp]
+        var func = self.call_functions[cell_id]
         if(typeof func[1] === "function"){
             var arg_count = func[2];
             self.data[self.sp] = func[1](...self.data.slice(self.sp+1, self.sp+arg_count+1))

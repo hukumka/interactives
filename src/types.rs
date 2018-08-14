@@ -50,6 +50,14 @@ impl Type{
     pub fn pointer(&self)->Type{
         Self{base: self.base.clone(), pointer_count: self.pointer_count+1}
     }
+
+    pub fn function_pointer(type_: FunctionType)->Type{
+        Self{
+            base: BaseType::Function(Box::new(type_)), 
+            pointer_count: 0
+        }
+    }
+
     pub fn dereference(&self)->Option<Type>{
         if self.pointer_count > 0 {
             Some(Self { base: self.base.clone(), pointer_count: self.pointer_count - 1})
