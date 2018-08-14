@@ -10,14 +10,14 @@ extern crate clap;
 extern crate strfmt;
 
 
-mod vm_optimizer;
-mod error;
-mod lexer;
-mod bracket_tree;
-mod syntax_tree;
-mod compiler;
-mod page;
-mod types;
+pub mod vm_optimizer;
+pub mod error;
+pub mod lexer;
+pub mod bracket_tree;
+pub mod syntax_tree;
+pub mod compiler;
+pub mod page;
+pub mod types;
 
 use std::fs::File;
 use std::io::Read;

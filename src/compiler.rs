@@ -214,9 +214,9 @@ pub struct DebugInfo{
     variables_transactions: Vec<VariableTransaction>,
     variables_transactions_stack: Vec<usize>,
 
-    /// function offset table. Contains pairs (function_id, offset)
+    /// function offset table. Contains pairs (function_id, offset, arg_count)
     functions: Vec<(usize, usize)>,
-    /// function links. Contains pairs (function_id, function_name)
+    /// function links. Contains pairs (function_id, function_name, arg_count)
     function_links: Vec<(usize, String)>,
 }
 
@@ -728,7 +728,7 @@ impl<'a> Compiler<'a>{
             let sp_offset = self.put_expr(); // reserve space for result
             let res = func.arguments.iter()
                 .zip(&type_.args)
-                .map(|(arg, type_)| self.compile_expression_of_type(arg, *type_))
+                .map(|(arg, type_)| self.compile_expression_of_type(arg, type_.clone()))
                 .fold(Some(()), |a, b| a.and(b));
             self.temp_values -= func.arguments.len();
             self.operations.push(Operation{
@@ -782,7 +782,7 @@ impl<'a> Compiler<'a>{
         }else if op == "="{
             let (type_, is_reference) = self.compile_expression(&operator.left)?;
             if is_reference && type_ != Type::void(){
-                let _right = self.compile_expression_of_type(&operator.right, type_)?;
+                let _right = self.compile_expression_of_type(&operator.right, type_.clone())?;
                 let r = self.take_latest_expr();
                 let l = self.take_latest_expr();
                 self.operations.push(Operation{

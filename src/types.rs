@@ -5,7 +5,7 @@ use syntax_tree::{
 };
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FunctionType{
     pub ret: Type,
     pub args: Vec<Type>
@@ -31,27 +31,28 @@ impl FunctionType{
 }
 
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Type{
     pub base: BaseType,
     pub pointer_count: u8,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum BaseType{
     Int,
     Float,
     Void,
+    Function(Box<FunctionType>),
 }
 
 
 impl Type{
     pub fn pointer(&self)->Type{
-        Self{base: self.base, pointer_count: self.pointer_count+1}
+        Self{base: self.base.clone(), pointer_count: self.pointer_count+1}
     }
     pub fn dereference(&self)->Option<Type>{
         if self.pointer_count > 0 {
-            Some(Self { base: self.base, pointer_count: self.pointer_count - 1})
+            Some(Self { base: self.base.clone(), pointer_count: self.pointer_count - 1})
         }else{
             None
         }
