@@ -15,17 +15,14 @@ pub enum Root<'a>{
 
 #[derive(Debug)]
 pub struct FunctionDefinition<'a>{
-    pub return_type: Type<'a>,
-    pub arguments: Vec<Variable<'a>>,
-    pub name: &'a TokenData<'a>,
+    pub decl: FunctionDeclaration<'a>,
     pub body: Block<'a>,
 }
 
 #[derive(Debug)]
 pub struct FunctionDeclaration<'a>{
-    pub return_type: Type<'a>,
+    pub ret_name: Variable<'a>,
     pub arguments: Vec<Variable<'a>>,
-    pub name: &'a TokenData<'a>,
 }
 
 #[derive(Debug)]
@@ -37,8 +34,21 @@ pub struct Variable<'a>{
 
 #[derive(Debug)]
 pub struct Type<'a>{
-    pub base: &'a TokenData<'a>,
+    pub base: TypeBase<'a>,
     pub pointer_count: usize
+}
+
+
+#[derive(Debug)]
+pub struct FunctionType<'a>{
+    pub ret: Type<'a>,
+    pub args: Vec<Type<'a>>
+}
+
+#[derive(Debug)]
+pub enum TypeBase<'a>{
+    Base(&'a TokenData<'a>),
+    Function(Box<FunctionType<'a>>),
 }
 
 
@@ -67,6 +77,18 @@ pub struct Return<'a>{
 impl<'a> TreeItem<'a> for Return<'a>{
     fn first_token(&self)->&'a TokenData<'a>{
         self.first_token
+    }
+}
+
+
+impl<'a> TreeItem<'a> for Type<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        match &self.base{
+            TypeBase::Base(t) => t,
+            TypeBase::Function(f) => {
+                f.ret.first_token()
+            }
+        }
     }
 }
 
@@ -188,7 +210,7 @@ macro_rules! expect_or_put_error{
             $error_stream.push(Error::new(
                 $walker.code(),
                 $error_code,
-                $walker.get_pos()
+                $walker.get_text_pos()
             ));
             None
         })
@@ -210,16 +232,7 @@ pub fn parse_program<'a>(walker: &mut BracketTreeWalker<'a>, error_stream: &mut 
 /// type name(*args*){*body*}
 impl<'a> Parseable<'a> for Root<'a> {
     fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>) -> Option<Self> {
-        // Root is either 
-        // VariableDefinition: [Type, Name, Operator(=), Expression, Operator(;), ..]
-        // FunctionDefinition: [Type, Name, Layer(Arguments), Layer{Block}]
-        // FunctionDeclaration: [Type, Name, Layer(Arguments), Operator(;)]
-        // start same for both
-        let type_ = Type::parse(walker, error_stream)?;
-        let name = expect_or_put_error!(
-            walker.expect_name() 
-            | error_stream << ERROR_PARSING_ROOT_EXPECT_NAME
-        )?;
+        let var = Variable::parse(walker, error_stream)?;
         // if it's operator(=) go into parsing variable
         if walker.expect_exact_operator("=").is_some() {
             let expr = Expression::parse(walker, error_stream)?;
@@ -228,40 +241,31 @@ impl<'a> Parseable<'a> for Root<'a> {
                 | error_stream << ERROR_PARSING_ROOT_EXPECT_SEMICOLON
             )?;
             Some(Root::VariableDefinition(VariableDefinition {
-                variable: Variable {
-                    type_,
-                    name,
-                },
+                variable: var,
                 set_to: expr
             }))
         } else {
-            let mut args_walker = expect_or_put_error!(
-                walker.expect_layer("(") 
-                | error_stream << ERROR_PARSING_ROOT_EXPECT_ROOT
+            let mut arg_walker = expect_or_put_error!(
+                walker.expect_layer("(")
+                | error_stream << ERROR_PARSING_ROOT_EXPECT_VARIABLE_OR_FUNCTION_DEFINITION
             )?;
-            let args = FunctionDefinition::parse_arguments(&mut args_walker, error_stream);
-            if let Some(mut body_walker) = walker.expect_layer("{"){
-                let body = Block::parse(&mut body_walker, error_stream);
-                Some(Root::FunctionDefinition(FunctionDefinition {
-                    return_type: type_,
-                    name,
-                    arguments: args?,
-                    body: body?
+            let args = FunctionDefinition::parse_arguments(&mut arg_walker, error_stream)?;
+            let decl = FunctionDeclaration{ret_name: var, arguments: args};
+            if walker.expect_exact_operator(";").is_some(){
+                Some(Root::FunctionDeclaration(decl))
+            }else if let Some(mut body_walker) = walker.expect_layer("{"){
+                let body = Block::parse(&mut body_walker, error_stream)?;
+                Some(Root::FunctionDefinition(FunctionDefinition{
+                    decl,
+                    body
                 }))
             }else{
-                expect_or_put_error!(
-                    walker.expect_exact_operator(";")
-                    | error_stream << ERROR_PARSING_FUNC_EXPECT_BODY
-                )?;
-                Some(Root::FunctionDeclaration(FunctionDeclaration {
-                    return_type: type_,
-                    name,
-                    arguments: args?,
-                }))
+                None
             }
         }
     }
 }
+
 
 impl<'a> TreeItem<'a> for Root<'a>{
     fn first_token(&self)->&'a TokenData<'a>{
@@ -270,32 +274,6 @@ impl<'a> TreeItem<'a> for Root<'a>{
             Root::FunctionDeclaration(x) => x.first_token(),
             Root::VariableDefinition(x) => x.first_token(),
         }
-    }
-}
-
-
-impl<'a> Parseable<'a> for Type<'a>{
-    fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
-        // get type name (int from int** *)
-        let base = expect_or_put_error!(
-            walker.expect_name()
-            | error_stream << ERROR_PARSING_TYPE_EXPECT_NAME
-        )?;
-        // get amount of pointers (3 from int** *)
-        let mut pointer_count = 0;
-        while let Some(x) = walker.expect_operator_checked(
-            |x| x.chars().all(|a| a == '*')
-        ){
-            pointer_count += x.token_str().len();
-        }
-        Some(Self{base, pointer_count})
-    }
-
-}
-
-impl<'a> TreeItem<'a> for Type<'a>{
-    fn first_token(&self)->&'a TokenData<'a>{
-        self.base
     }
 }
 
@@ -328,12 +306,32 @@ impl<'a> FunctionDefinition<'a>{
 
 impl<'a> TreeItem<'a> for FunctionDefinition<'a>{
     fn first_token(&self)->&'a TokenData<'a>{
-        self.return_type.first_token()
+        self.decl.first_token()
     }
 }
 impl<'a> TreeItem<'a> for FunctionDeclaration<'a>{
     fn first_token(&self)->&'a TokenData<'a>{
-        self.return_type.first_token()
+        self.ret_name.first_token()
+    }
+}
+impl<'a> TreeItem<'a> for Variable<'a>{
+    fn first_token(&self)->&'a TokenData<'a>{
+        self.name
+    }
+}
+
+
+impl<'a> Parseable<'a> for Type<'a>{
+    fn parse(walker: &mut BracketTreeWalker<'a>, _error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+        let base = walker.expect_name()?;
+        let mut pointer_count = 0;
+        while let Some(op) = walker.expect_operator_checked(|op| op.chars().all(|c| c == '*')){
+            pointer_count += op.token_str().len();
+        }
+        Some(Type{
+            base: TypeBase::Base(base),
+            pointer_count
+        })
     }
 }
 
@@ -424,8 +422,7 @@ impl<'a> TreeItem<'a> for Statement<'a>{
 
 impl<'a> Parseable<'a> for VariableDefinition<'a>{
     fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
-        let type_ = Type::parse(walker, error_stream)?;
-        let name = walker.expect_name()?;
+        let variable = Variable::parse(walker, error_stream)?;
         walker.expect_exact_operator("=")?;
         let expr = Expression::parse(walker, error_stream)?;
         expect_or_put_error!(
@@ -433,15 +430,67 @@ impl<'a> Parseable<'a> for VariableDefinition<'a>{
             | error_stream << ERROR_PARSING_VARDEF_EXPECT_SEMICOLON
         )?;
         Some(VariableDefinition{
-            variable: Variable{
-                type_,
-                name
-            },
+            variable,
             set_to: expr
         })
     }
-
 }
+
+
+impl<'a> Parseable<'a> for Variable<'a>{
+    fn parse(walker: &mut BracketTreeWalker<'a>, error_stream: &mut Vec<Error<'a>>)->Option<Self>{
+        let type_ = Type::parse(walker, error_stream)?;
+        if let Some(mut inner) = walker.expect_layer("("){
+            expect_or_put_error!(
+                inner.expect_exact_operator("*")
+                | error_stream << ERROR_PARSING_TYPE_EXPECT_ASTERIX
+            )?;
+            let name = inner.expect_name()?;
+            expect_or_put_error!(
+                inner.expect_empty()
+                | error_stream << ERROR_PARSING_TYPE_EXPECT_CLOSING_BRACKET
+            )?;
+
+            let mut args = vec![];
+            let mut inner = expect_or_put_error!(
+                walker.expect_layer("(")
+                | error_stream << ERROR_PARSING_TYPE_EXPECT_BRACKET
+            )?;
+            if !inner.is_empty(){
+                loop{
+                    args.push(Type::parse(&mut inner, error_stream)?);
+                    if inner.is_empty(){
+                        break;
+                    }
+                    expect_or_put_error!(
+                        walker.expect_exact_operator(",")
+                        | error_stream << ERROR_PARSING_FUNC_ARGS_EXPECT_COMA
+                    )?;
+                }
+            }
+            let type_ = Type{
+                base: TypeBase::Function(Box::new(FunctionType{ret: type_, args})),
+                pointer_count: 0
+            };
+            Some(
+                Variable{
+                    type_,
+                    name
+                },
+            )
+        }else{
+            let name = walker.expect_name()?;
+            Some(
+                Variable{
+                    type_,
+                    name
+                },
+            )
+        }
+        
+    }
+}
+
 
 impl<'a> TreeItem<'a> for VariableDefinition<'a>{
     fn first_token(&self)->&'a TokenData<'a>{
@@ -783,64 +832,6 @@ mod tests{
 	    }
 	}
 	
-	#[test]
-	fn test_expression_base_parse(){
-	    //== single variable
-	    new_walker!{let mut walker = "a";}
-	    let mut error_stream = vec![];
-	    let expr = Expression::parse_base(&mut walker, &mut error_stream).unwrap();
-	    assert!(error_stream.is_empty());
-	    match expr{
-	        Expression(box ExpressionData::Variable(td)) => {
-	            assert_eq!(td.token_str(), "a");
-	        },
-	        _ => {panic!("unexpected result")}
-	    }
-	    assert_eq!(walker.get_pos(), 1);
-	    
-	    //== constant
-	    new_walker!{let mut walker = "13";}
-	    let mut error_stream = vec![];
-	    let expr = Expression::parse_base(&mut walker, &mut error_stream).unwrap();
-	    assert!(error_stream.is_empty());
-	    match expr{
-	        Expression(box ExpressionData::Constant(td)) => {
-	            assert_eq!(td.token_str(), "13");
-	        },
-	        _ => {panic!("unexpected result")}
-	    }
-	    assert_eq!(walker.get_pos(), 1);
-	    
-	    //== function call
-	    new_walker!{let mut walker = "a()";}
-	    let mut error_stream = vec![];
-	    let expr = Expression::parse_base(&mut walker, &mut error_stream).unwrap();
-	    assert!(error_stream.is_empty());
-	    match expr{
-	        Expression(box ExpressionData::FunctionCall(fc)) => {
-	            assert_eq!(fc.name.token_str(), "a");
-	            assert_eq!(fc.arguments.len(), 0);
-	        },
-	        _ => {panic!("unexpected result")}
-	    }
-	    assert_eq!(walker.get_pos(), 3);
-	
-	    //== (something inside)
-	    new_walker!{let mut walker = "(a())";}
-	    let mut error_stream = vec![];
-	    let expr = Expression::parse_base(&mut walker, &mut error_stream).unwrap();
-	    assert!(error_stream.is_empty());
-	    match expr{
-	        Expression(box ExpressionData::FunctionCall(fc)) => {
-	            assert_eq!(fc.name.token_str(), "a");
-	            assert_eq!(fc.arguments.len(), 0);
-	        },
-	        _ => {panic!("unexpected result")}
-	    }
-	    assert_eq!(walker.get_pos(), 5);
-	
-	
-	}
 	
 	
 	macro_rules! check_nested_expression{
@@ -865,7 +856,7 @@ mod tests{
 	        $from;
 	        FunctionCall as func_call;
 	        return func_call.arguments;
-	        check(func_call.name.token_str(), $name);
+	        check(check_var_expr!(func_call.func, $name), ());
 	    )};
 	}
 	
@@ -922,6 +913,68 @@ mod tests{
 	    )}
 	}
 	
+	#[test]
+	fn test_expression_base_parse(){
+	    //== single variable
+	    new_walker!{let mut walker = "a";}
+	    let mut error_stream = vec![];
+	    let expr = Expression::parse_base(&mut walker, &mut error_stream).unwrap();
+	    assert!(error_stream.is_empty());
+	    match expr{
+	        Expression(box ExpressionData::Variable(td)) => {
+	            assert_eq!(td.token_str(), "a");
+	        },
+	        _ => {panic!("unexpected result")}
+	    }
+	    assert_eq!(walker.get_pos(), 1);
+	    
+	    //== constant
+	    new_walker!{let mut walker = "13";}
+	    let mut error_stream = vec![];
+	    let expr =  if let Some(e) = Expression::parse_base(&mut walker, &mut error_stream){
+            e
+        }else{
+            println!("{:?}", error_stream);
+            panic!();
+        };
+	    assert!(error_stream.is_empty());
+	    match expr{
+	        Expression(box ExpressionData::Constant(td)) => {
+	            assert_eq!(td.token_str(), "13");
+	        },
+	        _ => {panic!("unexpected result")}
+	    }
+	    assert_eq!(walker.get_pos(), 1);
+	    
+	    //== function call
+        println!("func call");
+	    new_walker!{let mut walker = "a()";}
+	    let mut error_stream = vec![];
+	    let expr = Expression::parse_base(&mut walker, &mut error_stream).unwrap();
+	    assert!(error_stream.is_empty());
+	    match expr{
+	        Expression(box ExpressionData::FunctionCall(fc)) => {
+                check_var_expr!(fc.func, "a");
+	            assert_eq!(fc.arguments.len(), 0);
+	        },
+	        _ => {panic!("unexpected result")}
+	    }
+	    assert_eq!(walker.get_pos(), 3);
+	
+	    //== (something inside)
+	    new_walker!{let mut walker = "(a())";}
+	    let mut error_stream = vec![];
+	    let expr = Expression::parse_base(&mut walker, &mut error_stream).unwrap();
+	    assert!(error_stream.is_empty());
+	    match expr{
+	        Expression(box ExpressionData::FunctionCall(fc)) => {
+                check_var_expr!(fc.func, "a");
+	            assert_eq!(fc.arguments.len(), 0);
+	        },
+	        _ => {panic!("unexpected result")}
+	    }
+	    assert_eq!(walker.get_pos(), 5);
+	}
 	#[test]
 	fn test_expression_parse_simple(){
 	    //== same as base
@@ -1092,7 +1145,7 @@ mod tests{
             Statement::VariableDefinition(v) => (v.variable.type_, v.variable.name, v.set_to),
             _ => panic!("Expected variable definition")
         };
-        assert_eq!(type_.base.token_str(), "int");
+        assert_eq!(type_to_str(&type_.base), Some("int"));
         assert_eq!(type_.pointer_count, 1);
         assert_eq!(name.token_str(), "x");
         let args = check_function_expr!(expr, "malloc");
@@ -1156,7 +1209,7 @@ mod tests{
             ForLoopInitialization::VariableDefinition(x) => (x.variable.type_, x.variable.name, x.set_to),
             _ => panic!("Expected variable definition")
         };
-        assert_eq!(type_.base.token_str(), "int");
+        assert_eq!(type_to_str(&type_.base), Some("int"));
         assert_eq!(type_.pointer_count, 0);
         assert_eq!(name.token_str(), "i");
         check_const_expr!(set_to, "0");
@@ -1207,7 +1260,7 @@ mod tests{
             ForLoopInitialization::VariableDefinition(x) => (x.variable.type_, x.variable.name, x.set_to),
             _ => panic!("Expected variable definition")
         };
-        assert_eq!(type_.base.token_str(), "int");
+        assert_eq!(type_to_str(&type_.base), Some("int"));
         assert_eq!(type_.pointer_count, 0);
         assert_eq!(name.token_str(), "i");
         check_const_expr!(set_to, "0");
@@ -1240,27 +1293,39 @@ mod tests{
             _ => panic!("Expected variable definition")
         };
         let type_ = &var_def.variable.type_;
-        assert_eq!(type_.base.token_str(), "int");
+        assert_eq!(type_to_str(&type_.base), Some("int"));
         assert_eq!(type_.pointer_count, 0);
         let name = &var_def.variable.name;
         assert_eq!(name.token_str(), "x");
         check_const_expr!(var_def.set_to, "0");
 
-        let r2 = Root::parse(&mut walker, &mut error_stream).unwrap();
+        let r2 = if let Some(x) = Root::parse(&mut walker, &mut error_stream){
+            x
+        }else{
+            panic!("{:?}", error_stream);   
+        };
         let fn_def = match r2{
             Root::FunctionDefinition(v) => v,
             _ => panic!("Expected function definition")
         };
-        let type_ = &fn_def.return_type;
-        assert_eq!(type_.base.token_str(), "int");
+        let type_ = &fn_def.decl.ret_name.type_;
+        let type_ = &var_def.variable.type_;
+        assert_eq!(type_to_str(&type_.base), Some("int"));
         assert_eq!(type_.pointer_count, 0);
-        let name = &fn_def.name;
+        let name = &fn_def.decl.ret_name.name;
         assert_eq!(name.token_str(), "x");
-        let args = &fn_def.arguments;
+        let args = &fn_def.decl.arguments;
         assert!(args.is_empty());
         assert!(fn_def.body.statements.is_empty());
 
         assert!(walker.is_empty());
+    }
+
+    fn type_to_str<'a>(t: &'a TypeBase<'a>)->Option<&'a str>{
+        match t{
+            TypeBase::Base(t) => Some(t.token_str()),
+            _ => None
+        }
     }
 
 

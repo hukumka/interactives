@@ -227,11 +227,31 @@ impl<'a> Preprocessor<'a>{
     /// panic if `char_iter` iterator is empty
     fn eat_numeric(&self, char_iter: &mut CharsIter<'a>)->Result<TokenData<'a>, Error<'a>>{
         let int_range = self.get_matching_range(char_iter, |x| x.is_digit(10));
-        let _dot_range = self.get_matching_range(char_iter, |x| x == '.');
-        let _float_range = self.get_matching_range(char_iter, |x| x.is_digit(10));
-        let _exp = self.get_matching_range(char_iter, |x| x == 'e');
-        let _minus = self.get_matching_range(char_iter, |x| x == '-');
-        let exp_value = self.get_matching_range(char_iter, |x| x.is_digit(10));
+        let _dot_range = if let Some(_) = char_iter.peek(){
+            self.get_matching_range(char_iter, |x| x == '.')
+        }else{
+            int_range   
+        };
+        let _float_range = if let Some(_) = char_iter.peek(){
+            self.get_matching_range(char_iter, |x| x.is_digit(10))
+        }else{
+            _dot_range  
+        };
+        let _exp = if let Some(_) = char_iter.peek(){
+            self.get_matching_range(char_iter, |x| x == 'e')
+        }else{
+            _float_range  
+        };
+        let _minus = if let Some(_) = char_iter.peek(){
+            self.get_matching_range(char_iter, |x| x == '-')
+        }else{
+            _exp  
+        };
+        let exp_value = if let Some(_) = char_iter.peek(){
+            self.get_matching_range(char_iter, |x| x.is_digit(10))
+        }else{
+            _minus
+        };
         Ok(TokenData::new(self.code_text, (int_range.0, exp_value.1), TokenType::Value))
     }
 

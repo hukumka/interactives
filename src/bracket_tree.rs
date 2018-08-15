@@ -1,3 +1,5 @@
+use std::fmt;
+
 use lexer::{TokenData, TokenType};
 use error::Error;
 use error::bracket_tree_parser::*;
@@ -83,6 +85,12 @@ pub struct BracketTreeWalker<'a>{
 	tree: &'a BracketTree<'a>
 }
 
+impl<'a> fmt::Debug for BracketTreeWalker<'a>{
+    fn fmt(&self, formatter: &mut fmt::Formatter)->fmt::Result{
+        write!(formatter, "BracketTreeWalker{{pos: {}, end: {}}}", self.pos, self.end)
+    }
+}
+
 impl<'a> BracketTreeWalker<'a>{
     /// Returns `BracketTreeWalker` for inner layer if its match and move `self` to position after
     /// layer, other wise stays unchanged
@@ -133,6 +141,10 @@ impl<'a> BracketTreeWalker<'a>{
         self.expect_operator_checked(|x| x == op)
     }
 
+    pub fn expect_operator(&mut self)->Option<&'a TokenData<'a>>{
+        self.expect_operator_checked(|_| true)
+    }
+
     /// Returns `TokenData` corresponding to operator if it is next token and meets `checker`
     /// condition, and move to next.
     pub fn expect_operator_checked<T: FnOnce(&str)->bool>(&mut self, checker: T)->Option<&'a TokenData<'a>>{
@@ -166,6 +178,14 @@ impl<'a> BracketTreeWalker<'a>{
 
     pub fn get_pos(&self)->usize{
         self.pos
+    }
+
+    pub fn get_text_pos(&self)->usize{
+        if self.pos < self.tree.data.len(){
+            self.tree.data[self.pos].get_interval().0
+        }else{
+            self.tree.data.last().unwrap().get_interval().1
+        }
     }
 
     pub fn expect_empty(&self)->Option<()>{

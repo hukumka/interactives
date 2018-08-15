@@ -148,16 +148,7 @@ impl<'a> VariableManager<'a>{
     }
 
     fn register_function_definition(&mut self, func: &'a FunctionDefinition<'a>)->Result<usize, Error<'a>>{
-        assert!(self.locals.is_empty()); // only in global scope
-        let type_ = FunctionType::from_definition(func)
-            .map_err(|e| Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()))?;
-        let type_ = Type::function_pointer(type_);
-        let address = self.register_variable(func.name, type_)?;
-        if let VariableHandleAddress::Global(id) = address{
-            Ok(id)
-        }else{
-            unreachable!()
-        }
+        self.register_function_declaration(&func.decl)
     }
     
     fn register_function_declaration(&mut self, func: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
@@ -165,7 +156,7 @@ impl<'a> VariableManager<'a>{
         let type_ = FunctionType::from_declaration(func)
             .map_err(|e| Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()))?;
         let type_ = Type::function_pointer(type_);
-        let address = self.register_variable(func.name, type_)?;
+        let address = self.register_variable(func.ret_name.name, type_)?;
         if let VariableHandleAddress::Global(id) = address{
             Ok(id)
         }else{
@@ -375,7 +366,7 @@ impl<'a> Compiler<'a>{
                 Root::FunctionDeclaration(decl) => {
                     match self.variables.register_function_declaration(decl){
                         Ok(i) => {
-                            self.debug_info.function_links.push((i, decl.name.token_str().to_string()));
+                            self.debug_info.function_links.push((i, decl.ret_name.name.token_str().to_string()));
                         },
                         Err(e) => {
                             self.errors.push(e);
@@ -402,7 +393,7 @@ impl<'a> Compiler<'a>{
     }
 
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>)->Option<usize>{
-        let function_id = self.variables.get_function_id(func.name)?;
+        let function_id = self.variables.get_function_id(func.decl.ret_name.name)?;
         self.debug_info.functions.push((function_id, self.operations.len()));
 
         self.current_function = Some(func);
@@ -411,7 +402,7 @@ impl<'a> Compiler<'a>{
         self.variables.push_namespace();
         self.variables.alloc_space_for_return_value();
         self.temp_values = 0;
-        let arguments_parsed = func.arguments.iter()
+        let arguments_parsed = func.decl.arguments.iter()
             .map(|v| {
                 let type_ = Type::from_type(&v.type_).map_err(|e|{
                    self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()));
@@ -438,14 +429,14 @@ impl<'a> Compiler<'a>{
             self.current_function = None;
             self.variables.pop_namespace().unwrap();
             // release debug info
-            for _ in &func.arguments{
+            for _ in &func.decl.arguments{
                 self.debug_info.pop_variable(self.operations.len());
             }
             Some(start)
         }else{
             self.current_function = None;
             self.variables.pop_namespace().unwrap();
-            for _ in &func.arguments{
+            for _ in &func.decl.arguments{
                 self.debug_info.pop_variable(self.operations.len());
             }
             None
@@ -487,8 +478,8 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_return(&mut self, ret: &'a Expression<'a>)->Option<()>{
-        let required_type = Type::from_type(&self.current_function.unwrap().return_type).or_else(|e|{
-            self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.base));
+        let required_type = Type::from_type(&self.current_function.unwrap().decl.ret_name.type_).or_else(|e|{
+            self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()));
             Err(e)
         }).ok()?;
         self.compile_expression_of_type(ret, required_type)?;
@@ -508,7 +499,7 @@ impl<'a> Compiler<'a>{
 
     fn compile_variable_definition(&mut self, var: &'a VariableDefinition<'a>)->Option<()>{
         let required_type = Type::from_type(&var.variable.type_).or_else(|e|{
-            self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.base));
+            self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()));
             Err(e)
         }).ok()?;
         let variable_address = self.variables.register_variable(&var.variable.name, required_type.clone()).ok()?;
@@ -714,7 +705,8 @@ impl<'a> Compiler<'a>{
                 });
             },
         }
-        Some((type_, true))
+        let rvalue = !type_.final_;
+        Some((type_, rvalue))
     }
 
     fn compile_expression_constant(&mut self, c: &'a TokenData<'a>)->Option<(Type, bool)>{
@@ -762,9 +754,9 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_expression_function_call(&mut self, func: &'a FunctionCall<'a>)->Option<(Type, bool)>{
-        let (type_, _) = self.compile_expression(&func.func)?;
+        let type_ = self.compile_expression_rvalue(&func.func)?;
         let type_ = match type_{
-            Type{pointer_count:0, base: BaseType::Function(box func)} => {
+            Type{pointer_count:0, base: BaseType::Function(box func), final_: _} => {
                 func
             },
             _ => {

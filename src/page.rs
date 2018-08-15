@@ -19,6 +19,7 @@ use syntax_tree::{
     Condition,
     Statement,
     Type,
+    TypeBase,
 
     TreeItem
 };
@@ -251,12 +252,30 @@ impl<'a> PageElement<'a> for Variable<'a>{
 
 impl<'a> PageElement<'a> for Type<'a>{
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
-        html!{writer, context,
-            span(class="c-type")[
-                {self.base}
-                {"*".repeat(self.pointer_count).as_str()}
-            ]
+        match &self.base{
+            TypeBase::Base(t) => {
+                html!{writer, context,
+                    span(class="c-type")[
+                        {t}
+                        {"*".repeat(self.pointer_count).as_str()}
+                    ]
+                }
+            },
+
+            TypeBase::Function(box func) => {
+                html!{writer, context,
+                    span(class="c-type")[
+                        {"("}
+                        {func.ret}
+                        {"(*)("}
+                        coma{&func.args}
+                        {"))"}
+                        {"*".repeat(self.pointer_count).as_str()}
+                    ]
+                }
+            }
         }
+        
         Ok(())
     }
 }
@@ -403,17 +422,21 @@ fn write_expression_brackets<'a, T: Write>(writer: &mut T, context: &mut Context
 
 impl<'a> PageElement<'a> for FunctionDeclaration<'a>{
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
+        self.write_with_symbol(writer, context, ";")
+    }
+}
+
+impl<'a> FunctionDeclaration<'a>{
+    fn write_with_symbol<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>, ending: &str)->Result{
         html!{writer, context,
             line{}
             span(class="function-head")[
-                {self.return_type}
-                {" "}
                 span(class="function-name")[
-                    {self.name}
+                    {self.ret_name}
                 ]
                 span(class="operator")[{"("}]
                 coma{self.arguments.as_slice()}
-                span(class="operator")[{");"}]
+                span(class="operator")[{")"}{ending}]
             ]
         }
         Ok(())
@@ -424,17 +447,7 @@ impl<'a> PageElement<'a> for FunctionDefinition<'a>{
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
         html!{writer, context,
             div(class="function-definition")[
-                line{}
-                span(class="function-head")[
-                    {self.return_type}
-                    {" "}
-                    span(class="function-name")[
-                        {self.name}
-                    ]
-                    span(class="operator")[{"("}]
-                    coma{self.arguments.as_slice()}
-                    span(class="operator")[{"){"}]
-                ]
+                call{|w, c| self.decl.write_with_symbol(w, c, "{")}
 
                 div(class="function-body")[
                     {self.body}

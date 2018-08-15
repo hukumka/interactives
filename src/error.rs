@@ -58,6 +58,10 @@ error_code!{
 		ERROR_PARSING_EXPR_EXPECTED_BRACKET = 0x0210;
 		ERROR_PARSING_STATEMENT_EXPECT_SEMICOLON = 0x0211;
 		ERROR_PARSING_VARDEF_EXPECT_SEMICOLON = 0x0212;
+		ERROR_PARSING_ROOT_EXPECT_VARIABLE_OR_FUNCTION_DEFINITION = 0x0201;
+        ERROR_PARSING_TYPE_EXPECT_ASTERIX = 0x213;
+        ERROR_PARSING_TYPE_EXPECT_CLOSING_BRACKET = 0x214;
+        ERROR_PARSING_TYPE_EXPECT_BRACKET = 0x215;
 	}
 
 	pub mod compiler{
@@ -84,6 +88,10 @@ pub struct Error<'a>{
 }
 
 impl<'a> Error<'a>{
+    pub fn code(&self)->usize{
+        self.code_
+    }
+
     pub fn new(text: &'a str, code: usize, position: usize)->Self{
         Self{text, code_: code, position}
     }
