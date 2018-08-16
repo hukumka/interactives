@@ -1,3 +1,43 @@
+//! ```
+//! let code = "int main(int x){int b=x+3; return b;}";
+//! let preprocessor = Preprocessor::new(code);
+//! let tokens = preprocessor.tokenize().unwrap();
+//!
+//! // Creating bracket tree from token array
+//! let bracket_tree = BracketTree::new(&tokens).unwrap();
+//! 
+//! // Create walker
+//! let mut walker = bracket_tree.walker();
+//! // take first two names (int and main)
+//! let int_tok = walker.expect_name().unwrap();
+//! let main_tok = walker.expect_name().unwrap();
+//!
+//! // take layer of arguments
+//! let mut args_walker = walker.expect_layer("(").unwrap();
+//! let int2_tok = args.walker.expect_name().unwrap();
+//! let x_tok = args_walker.expect_name().unwrap();
+//! args_walker.expect_empty().unwrap();
+//!
+//! // if token expectations do not satisfied walker dont move
+//! assert!(walker.expect_name().is_none());
+//! // and one can keep using it as nothing happened
+//! let mut body_walker = walker.expect_layer("{").unwrap();
+//! // Also, it's not nessesary to exhaust inner layer before
+//! // continuing use of parent. This also can allow some async
+//! // parsing.
+//! walker.expect_empty();
+//!
+//! body_walker.expect_name().unwrap();
+//! body_walker.expect_name().unwrap();
+//! body_walker.expect_exact_operator("=").unwrap();
+//! body_walker.expect_name().unwrap();
+//! body_walker.expect_operator().unwrap();
+//! body_walker.expect_value().unwrap();
+//! body_walker.expect_exact_operator(";").unwrap();
+//! /// ...
+//! 
+//! ```
+
 use std::fmt;
 
 use lexer::{TokenData, TokenType};
@@ -18,6 +58,8 @@ pub struct BracketTree<'a>{
 }
 
 impl<'a> BracketTree<'a>{
+    /// Creates new instance of BracketTree.
+    /// If brackets ('()' '{}' '[]') do not match, returns ```Error```
 	pub fn new(data: &'a [TokenData<'a>])->Result<Self, Error>{
 	    let mut depth_marker = vec![0; data.len()];
 	    let mut bracket_end = vec![0; data.len()];
@@ -73,12 +115,15 @@ impl<'a> BracketTree<'a>{
 	    }
 	}
 	
+    /// Create new instance of ```BracketTreeWalker```.
+    /// Used to access tokens and layers
 	pub fn walker(&'a self)->BracketTreeWalker<'a>{
 	    BracketTreeWalker{pos: 0, end: self.data.len(), tree: self}
 	}
 }
 
 #[derive(Clone)]
+/// Iterator-like structure designated to navigate over raw array of tokens.
 pub struct BracketTreeWalker<'a>{
 	pos: usize,
 	end: usize,
@@ -92,10 +137,11 @@ impl<'a> fmt::Debug for BracketTreeWalker<'a>{
 }
 
 impl<'a> BracketTreeWalker<'a>{
-    /// Returns `BracketTreeWalker` for inner layer if its match and move `self` to position after
-    /// layer, other wise stays unchanged
+    /// If current token is an opening bracket create new ```BracketTreeWalker``` limited
+    /// to sub-tree between it and its matching closing bracket, and then move to token
+    /// after closing bracket. returns created walker.
     ///
-    /// opening_bracket must be opening bracket and not any other symbol
+    /// Otherwise returns None
     pub fn expect_layer(&mut self, opening_bracket: &str)->Option<BracketTreeWalker<'a>>{
         assert!(is_open_bracket(opening_bracket));
         if self.pos == self.end{
@@ -118,39 +164,58 @@ impl<'a> BracketTreeWalker<'a>{
         }
     }
 
+    /// walk back over previous token
+    /// panic if tries to put back a layer
     pub fn put_back(&mut self){
         self.pos-=1;
+        if self.tree.data[self.pos].get_type() == TokenType::Bracket{
+            unimplemented!("Cannot put_back a layer!"); // TODO implement this
+        }
     }
 
-    /// Returns `TokenData` corresponding to name if it is next token, and move to next.
+    /// If current token is a ```TokenType::Name``` returns it and move current to next token.
+    /// Otherwise returns None.
     pub fn expect_name(&mut self)->Option<&'a TokenData<'a>>{
         self.expect_token_of_type_checked(TokenType::Name, |_| true)
     }
 
+    /// If current token is a ```TokenType::Name``` and its ```.token_str()``` equal to ```name``
+    /// returns it and move current to next token.
+    /// Otherwise returns None.
     pub fn expect_exact_name(&mut self, name: &str)->Option<&'a TokenData<'a>>{
         self.expect_token_of_type_checked(TokenType::Name, |x| x == name)
     }
 
-    /// Returns `TokenData` corresponding to value if it is next token, and move to next.
+    /// If current token is a ```TokenType::Value``` returns it and move current to next token.
+    /// Otherwise returns None.
     pub fn expect_value(&mut self)->Option<&'a TokenData<'a>>{
         self.expect_token_of_type_checked(TokenType::Value, |_| true)
     }
 
-    /// Returns `TokenData` corresponding to operator if it is next token and it's equal to 'op' and move to next.
+    /// If current token is a ```TokenType::Operator``` and its ```.token_str()``` equal to ```op``
+    /// returns it and move current to next token.
+    /// Otherwise returns None.
     pub fn expect_exact_operator(&mut self, op: &str)->Option<&'a TokenData<'a>>{
         self.expect_operator_checked(|x| x == op)
     }
 
+    /// If current token is a ```TokenType::Operator```
+    /// returns it and move current to next token.
+    /// Otherwise returns None.
     pub fn expect_operator(&mut self)->Option<&'a TokenData<'a>>{
         self.expect_operator_checked(|_| true)
     }
 
-    /// Returns `TokenData` corresponding to operator if it is next token and meets `checker`
-    /// condition, and move to next.
+    /// If current token is a ```TokenType::Operator``` and its ```.token_str()``` match ```checker``
+    /// returns it and move current to next token.
+    /// Otherwise returns None.
     pub fn expect_operator_checked<T: FnOnce(&str)->bool>(&mut self, checker: T)->Option<&'a TokenData<'a>>{
         self.expect_token_of_type_checked(TokenType::Operator, checker)
     }
 
+    /// If current token has type ```type_``` and its ```.token_str()``` match ```checker```
+    /// return it and move current to next token
+    /// Otherwise returns None.
     fn expect_token_of_type_checked<T: FnOnce(&str)->bool>(&mut self, type_: TokenType, checker: T)->Option<&'a TokenData<'a>>{
         if self.pos == self.end{
             return None;
@@ -164,10 +229,12 @@ impl<'a> BracketTreeWalker<'a>{
         }
     }
 
+    /// Check if walker reached its end
     pub fn is_empty(&self)->bool{
         self.pos >= self.end
     }
 
+    /// Get code on which tokens were build
     pub fn code(&self)->&'a str{
         if self.pos < self.tree.data.len(){
             self.tree.data[self.pos].code()
@@ -176,10 +243,12 @@ impl<'a> BracketTreeWalker<'a>{
         }
     }
 
+    /// Get current position
     pub fn get_pos(&self)->usize{
         self.pos
     }
 
+    /// Get current position in code
     pub fn get_text_pos(&self)->usize{
         if self.pos < self.tree.data.len(){
             self.tree.data[self.pos].get_interval().0
@@ -188,6 +257,7 @@ impl<'a> BracketTreeWalker<'a>{
         }
     }
 
+    /// Return Some if walker is empty, otherwise return None
     pub fn expect_empty(&self)->Option<()>{
         if self.is_empty(){
             Some(())
@@ -198,14 +268,17 @@ impl<'a> BracketTreeWalker<'a>{
 }
 
 
+/// Check if ```s``` is opening bracket
 fn is_open_bracket(s: &str)->bool{
     "([{".contains(s)
 }
 
+/// Check if ```s``` is closing bracket
 fn is_close_bracket(s: &str)->bool{
     ")]}".contains(s)
 }
 
+/// Check if ```s1``` and ```s2``` are matching opening and closing bracket correspondedly
 fn are_brackets_match(s1: &str, s2: &str)->bool{
     let i1 = "([{".find(s1);
     let i2 = ")]}".find(s2);
