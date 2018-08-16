@@ -382,6 +382,7 @@ impl<'a> Parseable<'a> for Statement<'a> {
                     Some(Statement::Return(ret))
                 }
                 _ => {
+                    let errors_count = error_stream.len();
                     *walker = walker_start.clone();
                     if let Some(vardef) = VariableDefinition::parse(walker, error_stream) {
                         Some(Statement::VariableDefinition(vardef))
@@ -392,6 +393,7 @@ impl<'a> Parseable<'a> for Statement<'a> {
                             walker.expect_exact_operator(";")
                             | error_stream << ERROR_PARSING_STATEMENT_EXPECT_SEMICOLON
                         )?;
+                        error_stream.truncate(errors_count);
                         Some(Statement::Expression(expr))
                     }
                 }
@@ -1326,6 +1328,43 @@ mod tests{
             TypeBase::Base(t) => Some(t.token_str()),
             _ => None
         }
+    }
+
+    #[test]
+    fn test_function_pointer_variable_parse(){
+        new_walker!{let mut walker = "int* (*x)(typename)";}
+        let mut error_stream = vec![];
+        let var = Variable::parse(&mut walker, &mut error_stream).unwrap();
+        match var.type_.base{
+            TypeBase::Base(_) => panic!("Expected function pointer type"),
+            TypeBase::Function(f) => {
+                assert_eq!(f.ret.pointer_count, 1);
+                assert_eq!(type_to_str(&f.ret.base), Some("int"));
+                assert_eq!(f.args.len(), 1);
+                assert_eq!(f.args[0].pointer_count, 0);
+                assert_eq!(type_to_str(&f.args[0].base), Some("typename"));
+            }
+        }
+        assert_eq!(var.name.token_str(), "x");
+
+        // negative case
+        new_walker!{let mut walker = "int(*x)";}
+        let mut error_stream = vec![];
+        assert!(Variable::parse(&mut walker, &mut error_stream).is_none());
+        assert_eq!(error_stream.len(), 1);
+        assert_eq!(error_stream[0].code(), ERROR_PARSING_TYPE_EXPECT_BRACKET);
+
+        new_walker!{let mut walker = "int(x)()";}
+        let mut error_stream = vec![];
+        assert!(Variable::parse(&mut walker, &mut error_stream).is_none());
+        assert_eq!(error_stream.len(), 1);
+        assert_eq!(error_stream[0].code(), ERROR_PARSING_TYPE_EXPECT_ASTERIX);
+
+        new_walker!{let mut walker = "int(*x, y)()";}
+        let mut error_stream = vec![];
+        assert!(Variable::parse(&mut walker, &mut error_stream).is_none());
+        assert_eq!(error_stream.len(), 1);
+        assert_eq!(error_stream[0].code(), ERROR_PARSING_TYPE_EXPECT_CLOSING_BRACKET);
     }
 
 
