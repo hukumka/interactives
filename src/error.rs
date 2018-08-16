@@ -1,3 +1,5 @@
+//! module handing error management
+
 use std::collections::HashMap;
 
 use lexer::TokenData;

@@ -1,3 +1,5 @@
+//! Compiler module
+
 use std::collections::HashMap;
 
 use lexer::TokenData;
@@ -39,43 +41,72 @@ pub enum Code {
     /// Jump to args[0] if values in cell args[1] != 0
     JumpNZ,
 
+    /// put value of args[1]==args[2] into args[0]
     Eq,
+    /// put value of args[1]!=args[2] into args[0]
     NotEq,
+    /// put value of args[1]<args[2] into args[0]
     Less,
+    /// put value of args[1]<=args[2] into args[0]
     LessOrEq,
 
+    /// put value of args[1]+args[2] into args[0]
     Sum,
+    /// put value of args[1]-args[2] into args[0]
     Diff,
+    /// put value of args[1]*args[2] into args[0]
     Mul,
+    /// put value of args[1]/args[2] into args[0]; args[1] and args[2] interpreted as integers
     DivI,
+    /// put value of args[1]%args[2] into args[0]
     Mod,
 
+    /// increase value in cell referenced by args[0]
     Inc,
+    /// decrease value in cell referenced by args[0]
     Dec,
 
+    /// move value referenced by args[1] into args[0]
     Dereference,
+    /// move value in args[1] into cell referenced by args[0]
     PointerSet,
 
+    /// do nothing
     Nop,
+    /// Move value from args[1] into args[0]
     Clone,
+    /// Move int Value into args[0]
     ConstInt,
+    /// Move float Value into args[0]
     ConstFloat,
+    /// Move value sp+args[1] into args[0], which is equal to
+    /// pointer to local variable with id=args[1]
     PointerToLocal,
 
+    /// Continue evaluation of caller
     Return,
+    /// Put current ip into call stack and move to begining called function
     Call,
 
+    /// add args[0] to stack pointer
     AddSp,
+    /// sub args[0] from stack pointer
     SubSb,
 
+    /// put value of args[1]/args[2] into args[0]; args[1] and args[2] interpreted as float
     Div,
+    /// converts float in args[1] to int and put result into args[0]
     FloatToInt,
 }
 
+/// struct carrying data about single operation for virtual machine
 #[derive(Debug)]
 pub struct Operation{
+    /// operation code. Classifies action and determines meaning of other fields.
     pub code: Code,
+    /// command arguments. See ```Code``` for extra info
     pub args: Vec<usize>,
+    /// extra argument, which cannot be represented as usize
     pub value: Option<Value>
 }
 
@@ -87,13 +118,20 @@ pub enum Value{
 }
 
 
+/// Struct, handling variables available in current scope.
 struct VariableManager<'a>{
+    /// globals variables
     globals: HashMap<&'a str, VariableHandle<'a>>,
+    /// local variables
     locals: Vec<HashMap<&'a str, VariableHandle<'a>>>,
+    /// total space currently used by local variables
+    /// Not equals to ```locals.iter().map(|x| x.len()).sum::<usize>()```!
+    /// This difference may be caused by function wanting to use space for return value
     locals_len: usize,
 }
 
 impl<'a> VariableManager<'a>{
+    /// creates variable manager
     fn new()->Self{
         Self{
             globals: HashMap::new(),
@@ -102,29 +140,42 @@ impl<'a> VariableManager<'a>{
         }
     }
 
+    /// open new namespace scope
     fn push_namespace(&mut self){
         self.locals.push(HashMap::new());
     }
 
+    /// close current namespace scope
     fn pop_namespace(&mut self)->Option<()>{
-        self.locals.pop().map(|_| ())
+        if let Some(discard) = self.locals.pop(){
+            self.locals_len -= discard.len();
+            Some(())
+        }else{
+            None
+        }
     }
 
+    /// clear data about local variables
     fn clear_locals(&mut self){
         self.locals.clear();
         self.locals_len = 0;
     }
 
+    /// Forces manager to pretend to have one extra local variable
     fn alloc_space_for_return_value(&mut self){
         assert_eq!(self.locals_len, 0);
         assert!(!self.locals.is_empty());
         self.locals_len = 1;
     }
 
+    /// get total amount of local variables !(or how much manager want you to beleive)
     fn locals_len(&self)->usize{
         self.locals_len
     }
 
+    /// register variable with type ```type_``` and name ```name``` in current scope.
+    /// default scope is global variables
+    /// return corresponding ```VariableHandleAddress``` if succesfull
     fn register_variable(&mut self, name: &'a TokenData<'a>, type_: Type)->Result<VariableHandleAddress, Error<'a>>{
         let (namespace, address) = if let Some(namespace) = self.locals.last_mut(){
             (namespace, VariableHandleAddress::Local(self.locals_len))
@@ -147,10 +198,14 @@ impl<'a> VariableManager<'a>{
         }
     }
 
+    /// register function pointer to function corresponding to definition as global variable
+    /// panic if already in scope other then globals
     fn register_function_definition(&mut self, func: &'a FunctionDefinition<'a>)->Result<usize, Error<'a>>{
         self.register_function_declaration(&func.decl)
     }
     
+    /// register function pointer to function corresponding to declaration as global variable
+    /// panic if already in scope other then globals
     fn register_function_declaration(&mut self, func: &'a FunctionDeclaration<'a>)->Result<usize, Error<'a>>{
         assert!(self.locals.is_empty()); // only in global scope
         let type_ = FunctionType::from_declaration(func)
@@ -164,6 +219,7 @@ impl<'a> VariableManager<'a>{
         }
     }
 
+    /// return id of function with given name
     fn get_function_id(&self, name: &'a TokenData<'a>)->Option<usize>{
         match self.globals.get(name.token_str()){
             Some(VariableHandle{address: VariableHandleAddress::Global(x), ..}) => {
@@ -173,6 +229,9 @@ impl<'a> VariableManager<'a>{
         }
     }
 
+    /// return ```VariableHandle``` for "closest" variable with given name
+    /// closest means it belongs to first scope (counting from top to globals)
+    /// which contains variable with such name
     fn get_variable(&self, name: &'a str)->Option<&VariableHandle<'a>>{
         for namespace in self.locals.iter().rev(){
             if let Some(x) = namespace.get(name){
@@ -184,19 +243,27 @@ impl<'a> VariableManager<'a>{
 }
 
 #[derive(Debug, Clone)]
+/// handles data about variable
 struct VariableHandle<'a>{
     pub type_: Type,
     pub name: &'a TokenData<'a>,
+    /// variable virtual address. This has some resemblanse to address of 
+    /// cell in there variable data will be stored, but it is not the same
     pub address: VariableHandleAddress,
 }
 
 #[derive(Debug, Copy, Clone)]
+/// variable virtual address structure
+/// holds variants of different memory allocation types
 pub enum VariableHandleAddress{
     Global(usize),
     Local(usize)
 }
 
 impl VariableHandleAddress{
+    /// converts address to string
+    /// for local variables it is just address
+    /// for globals its $address
     pub fn to_string(&self)->String{
         use std::fmt::Write;
         let mut res = String::new();
@@ -210,6 +277,7 @@ impl VariableHandleAddress{
 
 
 #[derive(Debug)]
+/// debug info required to generate nice interactive page
 pub struct DebugInfo{
     /// Map from offset of variable reference to its offset in stack
     variables: HashMap<usize, (VariableHandleAddress, usize)>,
@@ -227,11 +295,17 @@ pub struct DebugInfo{
 
 
 #[derive(Debug)]
+/// Part of debug info responcible for determining variable visibility scopes
 pub struct VariableTransaction{
+    /// position in code there transaction happened
     pub pos: usize,
+    /// variable name
     pub name: String,
+    /// local variable id
     pub var_id: usize,
+    /// if true then variable added to scope, otherwise removed
     pub add: bool,
+    /// position of paired transaction (add for remove and visa versa)
     pub pair: usize,
 }
 
@@ -249,21 +323,29 @@ impl DebugInfo{
         }
     }
 
+    /// get list of entry points for all registered functions.
+    /// each entry is a tuple (function_id, function_offset)
     pub fn get_function_entry_points(&self)->&[(usize, usize)]{
         self.functions.as_slice()
     }
+    /// get list of entry points for all registered function declarations (without a body).
+    /// each entry is a tuple (function_id, function_name)
     pub fn get_function_links(&self)->&[(usize, String)]{
         self.function_links.as_slice()
     }
 
+    /// get list of all ```VariableTransactions```
     pub fn get_variable_transactions(&self)->&[VariableTransaction]{
         self.variables_transactions.as_slice()
     }
 
+    /// stores the point to there ```recover_to_stack_floor``` can remove added in inner scope
+    /// variables
     fn make_stack_floor(&self)->usize{
         self.variables_transactions_stack.len()
     }
 
+    /// removes all variables added in scope
     fn recover_to_stack_floor(&mut self, code_offset: usize, floor: usize){
         let count = self.variables_transactions_stack.len() - floor;
         for _ in 0..count{
@@ -271,6 +353,7 @@ impl DebugInfo{
         }
     }
 
+    /// register variable use
     fn reg_variable_offset<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: VariableHandleAddress){
         let tr_id = match stack_offset{
             VariableHandleAddress::Local(x) => self.variables_transactions_stack[x-1],           
@@ -279,6 +362,7 @@ impl DebugInfo{
         self.variables.insert(name.get_pos(), (stack_offset, tr_id));
     }
 
+    /// register variable definition
     fn push_variable<'a>(&mut self, name: &'a TokenData<'a>, stack_offset: VariableHandleAddress, code_offset: usize){
         if let VariableHandleAddress::Local(_) = stack_offset{
             self.variables_transactions_stack.push(self.variables_transactions.len());
@@ -293,6 +377,7 @@ impl DebugInfo{
         self.reg_variable_offset(name, stack_offset);
     }
 
+    /// register variable removal from scope
     fn pop_variable(&mut self, code_offset: usize){
         if let Some(x) = self.variables_transactions_stack.pop(){
             let name = self.variables_transactions[x].name.clone();
@@ -309,40 +394,52 @@ impl DebugInfo{
         }
     }
 
+    /// register statement start at offset
     fn reg_statement_offset<'a>(&mut self, statement: &'a Statement<'a>, vm_offset: usize){
         self.statements_by_id.push(vm_offset);
         self.statements.insert(statement.first_token().get_pos(), vm_offset);
     }
 
+    /// return data about variable use
     pub fn get_variable_data<'a>(&self, name: &'a TokenData<'a>)->Option<(VariableHandleAddress, usize)>{
         self.variables.get(&name.get_pos()).map(|x| x.clone())
     }
 
+    /// return vm code offset for statement
     pub fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
         self.statements.get(&statement.first_token().get_pos()).map(|x| *x)
     }
 
+    /// return vm code offset for statement (statement determined by its offset in source)
     pub fn get_statement_offset_by_pos<'a>(&self, pos: usize)->Option<usize>{
         self.statements.get(&pos).map(|x| *x)
     }
 
+    /// get all statement vm code offsets
     pub fn statements_offsets(&self)->&[usize]{
         self.statements_by_id.as_slice()
     }
 }
 
 
+/// struct designed to take syntax tree and produce virtual machine code
 pub struct Compiler<'a>{
+    /// compiled operations
     operations: Vec<Operation>,
+    /// variable manager
     variables: VariableManager<'a>,
+    /// amount of temporary value used to compute expression
     temp_values: usize,
+    /// currently compiled function
     current_function: Option<&'a FunctionDefinition<'a>>,
     debug_info: DebugInfo,
+    /// errors happened during compiling
     errors: Vec<Error<'a>>
 }
 
 
 impl<'a> Compiler<'a>{
+    /// creates new instance of compiler
     pub fn new()->Self{
         Self{
             operations: vec![],
@@ -354,6 +451,7 @@ impl<'a> Compiler<'a>{
         }
     }
 
+    /// compile syntax tree and get result
     pub fn compile(mut self, tree: &'a [Root<'a>])->Result<(Vec<Operation>, DebugInfo), Vec<Error<'a>>>{
         // define all functions
         for t in tree{
@@ -392,6 +490,7 @@ impl<'a> Compiler<'a>{
         }
     }
 
+    /// compile single function
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>)->Option<usize>{
         let function_id = self.variables.get_function_id(func.decl.ret_name.name)?;
         self.debug_info.functions.push((function_id, self.operations.len()));

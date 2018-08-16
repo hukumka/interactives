@@ -1,3 +1,7 @@
+//! This is module managing navigation through tokens
+//!
+//! # Example
+//!
 //! ```
 //! let code = "int main(int x){int b=x+3; return b;}";
 //! let preprocessor = Preprocessor::new(code);
