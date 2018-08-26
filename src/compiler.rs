@@ -863,7 +863,7 @@ impl<'a> Compiler<'a>{
                 return None;
             }
         };
-        let func_id = self.take_latest_expr();
+        self.take_latest_expr();
 
         if func.arguments.len() == type_.args.len(){
             let sp_offset = self.put_expr(); // reserve space for result
@@ -880,7 +880,7 @@ impl<'a> Compiler<'a>{
             self.operations.push(Operation{
                 value: None,
                 code: Code::Call,
-                args: vec![func_id]
+                args: vec![]
             });
             self.operations.push(Operation{
                 value: None,

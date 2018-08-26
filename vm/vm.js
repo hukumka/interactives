@@ -166,7 +166,7 @@ function VM(code, functions, function_links){
     // sum
     this.operation_names[7] = "SUM";
     this.operations[7] = function(args){
-        self.data[args[1]] = self.data[args[2]] + self.data[args[3]];
+        self.data[self.sp + args[1]] = self.data[self.sp + args[2]] + self.data[self.sp + args[3]];
         self.ip++;
     }
     // diff
