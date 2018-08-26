@@ -47,7 +47,7 @@ function VM(code, functions, function_links){
             var command = this.code[this.ip];
             var command_id = command[0];
             var res = this.operations[command_id](command);
-            if(res !== undefined){
+            if(res !== undefined || this.is_running === false){
                 this.reset();
                 return res;
             }
@@ -69,7 +69,7 @@ function VM(code, functions, function_links){
             var command = this.code[this.ip];
             var command_id = command[0];
             var res = this.operations[command_id](command);
-            if(res !== undefined){
+            if(res !== undefined || this.is_running === false){
                 this.reset();
                 return res;
             }
@@ -106,6 +106,7 @@ function VM(code, functions, function_links){
     this.reset = function(){
         this.ip = 0;
         this.data = [];
+        this.allocated = [];
         this.is_running = false;
     }
 
@@ -266,6 +267,7 @@ function VM(code, functions, function_links){
         if(self.return_stack.length > 0){
             self.ip = self.return_stack.pop() + 1;
         }else{
+            self.is_running = false;
             return self.data[self.sp];
         }
     }
