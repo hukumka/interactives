@@ -422,7 +422,12 @@ fn write_expression_brackets<'a, T: Write>(writer: &mut T, context: &mut Context
 
 impl<'a> PageElement<'a> for FunctionDeclaration<'a>{
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>)->Result{
-        self.write_with_symbol(writer, context, ";")
+        html!{writer, context,
+            div(class="function-declaration")[
+                call{|w, c| self.write_with_symbol(w, c, ";")}
+            ]
+        }
+        Ok(())
     }
 }
 
