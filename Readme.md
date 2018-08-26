@@ -20,7 +20,13 @@ developer, so many features might be never implemented (Or implemented incorrect
 
 ## Usage
 
+Example (from catalog):
+```
+interactives examples/euler/0.cpp -t examples/euler/template.html
+```
+```
 interactives INPUT [-o OUTPUT] [-t TEMPLATE]
+```
 
 + INPUT - path to C file.
 + OUTPUT - path to output web page file. Requiers vm catalog to be copied to same directory. Default value is "out.html"
