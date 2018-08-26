@@ -1287,3 +1287,12 @@ impl<'a> Compiler<'a>{
         self.temp_values + self.variables.locals_len()
     }
 }
+
+
+#[cfg(tests)]
+mod test{
+    #[test]
+    fn test_compile_expression(){
+        
+    }
+}

@@ -1,12 +1,16 @@
-    functions = []
-
-    functions['alert'] = {
-        arg_count: 1, 
-        func: function(x){
-            console.log(x);
-            return 24;
-        }
-    };
+function initialize_vm_interface(functions){
+    var functions = functions;
+    if(functions === undefined){
+        functions = []
+ 
+        functions['log'] = {
+            arg_count: 1, 
+            func: function(x){
+                console.log(x);
+                return 0;
+            }
+        };
+    }
     var function_links = compiled.function_links.map(x => [x[0], functions[x[1]].func, functions[x[1]].arg_count]);
 
 
@@ -38,7 +42,8 @@
     }
 
 
-    var vm = new VM(compiled.commands, compiled.function_enters, function_links)
+    vm = new VM(compiled.commands, compiled.function_enters, function_links)
+
 
     function VariableManager(transactions){
         this.transactions = transactions;
@@ -227,3 +232,4 @@
               .join("")
             + "</table>";
     }
+}

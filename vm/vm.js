@@ -9,6 +9,9 @@ function VM(code, functions, function_links){
     this.break_on_return = false;
     this.data = [];
     this.return_stack = [];
+
+    this.allocated = [];
+    this.max_stack_size = 10000;
     
     this.is_running = false;
 
@@ -19,7 +22,18 @@ function VM(code, functions, function_links){
         this.functions[i] = functions[i]
     }
     for(var i=0; i<function_links.length; ++i){
+        if(function_links[i][1] === "vm.alloc"){
+            function_links[i][1] = function(size){
+                console.log("vm.alloc")
+                return self.allocate(size);
+            }
+        }
         this.call_functions[function_links[i][0]] = function_links[i]
+    }
+
+    this.allocate = function(size){
+        var pointer = this.allocated.length;
+        return pointer + this.max_stack_size;
     }
 
     this.run = function(){
@@ -197,14 +211,24 @@ function VM(code, functions, function_links){
     this.operation_names[14] = "PTR_GET";
     this.operations[14] = function(args){
         var pointer = self.data[self.sp + args[2]];
-        self.data[self.sp + args[1]] = self.data[pointer];
+        if(pointer < self.max_stack_size){
+            self.data[self.sp + args[1]] = self.data[pointer];
+        }else{
+            pointer -= self.max_stack_size;
+            self.data[self.sp + args[1]] = self.allocated[pointer];
+        }
         self.ip++;
     }
     // pointer set
     this.operation_names[15] = "PTR_SET";
     this.operations[15] = function(args){
         var pointer = self.data[self.sp + args[1]];
-        self.data[pointer] = self.data[self.sp + args[2]];
+        if(pointer < self.max_stack_size){
+            self.data[pointer] = self.data[self.sp + args[2]];
+        }else{
+            pointer -= self.max_stack_size;
+            self.allocated[pointer] = self.data[self.sp + args[2]];
+        }
         self.ip++;
     }
     // Nop
