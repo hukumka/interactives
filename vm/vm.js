@@ -17,6 +17,8 @@ function VM(code, functions, function_links){
 
     var self = this;
 
+    this.on_break = function(){}
+
     for(var i=0; i<functions.length; ++i){
         this.call_functions[functions[i][0]] = functions[i]
         this.functions[i] = functions[i]
@@ -36,10 +38,20 @@ function VM(code, functions, function_links){
         return pointer + this.max_stack_size;
     }
 
+    this.get_array = function(pointer, size){
+        if(pointer < this.max_stack_size){
+            return this.data.slice(pointer, pointer+size);
+        }else{
+            pointer -= this.max_stack_size;
+            return this.allocated.slice(pointer, pointer+size);
+        }
+    }
+
     this.run = function(){
         if(this.is_running === false){
             this.is_running = true;
             if(this.breakpoints.includes(0)){
+                this.on_break();
                 return;
             }
         }
@@ -48,6 +60,7 @@ function VM(code, functions, function_links){
             var command_id = command[0];
             var res = this.operations[command_id](command);
             if(res !== undefined || this.is_running === false){
+                this.on_break();
                 this.reset();
                 return res;
             }
@@ -55,6 +68,7 @@ function VM(code, functions, function_links){
                 break;
             }
         }
+        this.on_break();
     }
 
     this.step = function(statements){
@@ -71,6 +85,7 @@ function VM(code, functions, function_links){
             var res = this.operations[command_id](command);
             if(res !== undefined || this.is_running === false){
                 this.reset();
+                this.on_break();
                 return res;
             }
             if(this.return_stack.length == depth && statements.includes(this.ip)){
@@ -88,6 +103,7 @@ function VM(code, functions, function_links){
                 break;
             }
         }
+        this.on_break();
     };
 
     this.current_function_range = function(){

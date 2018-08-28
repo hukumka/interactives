@@ -30,6 +30,11 @@ div.code{
     border-width: 0px 2px 0px 2px;
 }
 
+div#graph{
+    background-color: white;
+    grid-area: left;
+}
+
 #asm_code{
     grid-area: left;
 }

@@ -125,7 +125,10 @@ function initialize_vm_interface(functions){
 
 	var hover_image=undefined;
 	var variables=undefined;
-	window.onload = function(){
+    var lines = [];
+    var current_line = null;
+
+	function onload(){
 	    hover_image=document.getElementById('hover_image');
 	    variables=document.getElementById('variables');
 
@@ -141,11 +144,11 @@ function initialize_vm_interface(functions){
 	    document.getElementById('step').addEventListener('click', step);
 	    document.getElementById('step-in').addEventListener('click', step_in);
 
-        document.getElementById("asm_code").innerHTML = generate_code_view(vm);
+        //document.getElementById("asm_code").innerHTML = generate_code_view(vm);
 	}
 
-    var lines = [];
-    var current_line = null;
+    onload();
+
 
 
     function get_current_line(addr){
@@ -232,4 +235,6 @@ function initialize_vm_interface(functions){
               .join("")
             + "</table>";
     }
+
+    return vm;
 }
