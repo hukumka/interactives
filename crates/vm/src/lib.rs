@@ -204,9 +204,9 @@ pub struct InstructionPointerGet{
     /// pointer to local variable ( or temporary value) there address value stored
     ///
     /// source
-    pointer: LocalDataPointer,
+    source: LocalDataPointer,
     /// destination of copy
-    copy_to: LocalDataPointer
+    destination: LocalDataPointer
 }
 
 /// Instruction::PointerSet representation
@@ -218,9 +218,9 @@ pub struct InstructionPointerSet{
     /// pointer to local variable ( or temporary value) there address value stored
     /// 
     /// destination
-    pointer: LocalDataPointer,
+    destination: LocalDataPointer,
     /// source of copy
-    copy_from: LocalDataPointer
+    source: LocalDataPointer
 }
 
 
@@ -460,14 +460,14 @@ impl<Data: ArbitraryData> VirtualMachine<Data>{
             // ---- ----
             // Pointers
             Instruction::PointerGet(get) => {
-                let pointer = self.data_stack[&get.pointer].as_int()?;
+                let pointer = self.data_stack[&get.source].as_int()?;
                 let pointer_value = self.data_stack.global_pointer(pointer)?.clone();
-                self.data_stack[&get.copy_to] = pointer_value;
+                self.data_stack[&get.destination] = pointer_value;
                 Ok(None)
             },
             Instruction::PointerSet(set) => {
-                let value = self.data_stack[&set.copy_from].clone();
-                let pointer = self.data_stack[&set.pointer].as_int()?;
+                let value = self.data_stack[&set.source].clone();
+                let pointer = self.data_stack[&set.destination].as_int()?;
                 let cell = self.data_stack.global_pointer_mut(pointer)?;
                 *cell = value;
                 Ok(None)
@@ -989,12 +989,12 @@ mod tests {
     fn test_pointer_get(){
         let code = vec![
             Instruction::PointerGet(InstructionPointerGet{
-                pointer: LocalDataPointer(1),
-                copy_to: LocalDataPointer(0),
+                source: LocalDataPointer(1),
+                destination: LocalDataPointer(0),
             }),
             Instruction::PointerGet(InstructionPointerGet{
-                pointer: LocalDataPointer(1),
-                copy_to: LocalDataPointer(0),
+                source: LocalDataPointer(1),
+                destination: LocalDataPointer(0),
             }),
         ];
 
@@ -1021,12 +1021,12 @@ mod tests {
     fn test_pointer_set(){
         let code = vec![
             Instruction::PointerSet(InstructionPointerSet{
-                pointer: LocalDataPointer(1),
-                copy_from: LocalDataPointer(0),
+                destination: LocalDataPointer(1),
+                source: LocalDataPointer(0),
             }),
             Instruction::PointerSet(InstructionPointerSet{
-                pointer: LocalDataPointer(1),
-                copy_from: LocalDataPointer(0),
+                destination: LocalDataPointer(1),
+                source: LocalDataPointer(0),
             }),
         ];
 
