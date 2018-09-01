@@ -24,6 +24,7 @@ use types::{
 ///
 /// Instruction is primitive to describe minimal
 /// amount of work ```VirtualMachine``` can do
+#[derive(Debug)]
 pub enum Instruction{
     // ---- ----
     // Jumps
@@ -198,6 +199,7 @@ pub enum Instruction{
 ///
 /// Copy value from local variable (or temporary value)
 /// into cell with address stored in local variable pointer
+#[derive(Debug)]
 pub struct InstructionPointerGet{
     /// pointer to local variable ( or temporary value) there address value stored
     ///
@@ -211,6 +213,7 @@ pub struct InstructionPointerGet{
 ///
 /// Copy value from cell with address stored in local variable pointer
 /// into local variable (or temporary value)
+#[derive(Debug)]
 pub struct InstructionPointerSet{
     /// pointer to local variable ( or temporary value) there address value stored
     /// 
@@ -224,6 +227,7 @@ pub struct InstructionPointerSet{
 /// Instruction::Copy representation
 ///
 /// Copy value from one local variable to other
+#[derive(Debug)]
 pub struct InstructionCopy{
     source: LocalDataPointer,
     destination: LocalDataPointer,
@@ -231,6 +235,7 @@ pub struct InstructionCopy{
 
 
 /// General binary operator instruction representation
+#[derive(Debug)]
 pub struct Binary{
     /// result of instruction will be put here
     pub put_into: LocalDataPointer,
@@ -246,6 +251,7 @@ pub struct Binary{
 pub struct CodePointer(usize);
 
 
+#[derive(Debug)]
 pub struct VirtualMachine<Data>{
     /// compiled code storage
     code: Vec<Instruction>,
@@ -264,6 +270,8 @@ pub struct VirtualMachine<Data>{
 
     /// points in code at there execution pauses
     breakpoints: HashSet<CodePointer>,
+
+    instruction_limit: usize,
 }
 
 impl<Data: ArbitraryData> VirtualMachine<Data>{
@@ -283,6 +291,8 @@ impl<Data: ArbitraryData> VirtualMachine<Data>{
             call_stack: vec![],
 
             breakpoints: HashSet::new(),
+
+            instruction_limit: 2000,
         }
     }
 
@@ -295,6 +305,9 @@ impl<Data: ArbitraryData> VirtualMachine<Data>{
         let res = loop{
             if let Some(return_value) = self.execute_instruction()?{
                 break Some(return_value);
+            }else if self.instruction_limit == 0{
+                self.instruction_limit = 2000;
+                break None;
             }else if self.breakpoints.contains(&self.instruction_pointer){
                 break None;
             }
@@ -310,6 +323,7 @@ impl<Data: ArbitraryData> VirtualMachine<Data>{
     fn execute_instruction(&mut self)->Result<Option<Data>, Data::Error>{
         let instruction = &self.code[self.instruction_pointer.0];
         self.instruction_pointer.0 += 1;
+        self.instruction_limit -= 1;
         match instruction{
             // ---- ----
             // Jumps
@@ -555,4 +569,687 @@ impl<Data: ArbitraryData> VirtualMachine<Data>{
 
 #[cfg(test)]
 mod tests {
+    use types::ArbitraryDataEnum;
+
+    type Data=ArbitraryDataEnum;
+
+    use super::*;
+
+    /// Struct used to track data side effects of instructions
+    struct SideEffects<Data: ArbitraryData>{
+        data_changes: Vec<usize>,
+        sp_changes: bool,
+        _allocates: bool,
+        returned: Result<Option<Data>, Data::Error>,
+    }
+
+    impl SideEffects<Data>{
+        /// execute ```VirtualMachine::execute_instruction``` and
+        /// construct ```SideEffects``` data
+        fn evaluate_and_check(vm: &mut VirtualMachine<Data>)->Self{
+            let stored_data: Vec<Data> = vm.data_stack.raw_data()
+                .iter()
+                .map(|x| x.clone())
+                .collect();
+            let old_sp = vm.data_stack.raw_stack_offset().clone();
+            
+            let returned = vm.execute_instruction();
+            let sp_changes = old_sp != *vm.data_stack.raw_stack_offset();
+
+            let new_data = vm.data_stack.raw_data();
+            let _allocates = new_data.len() != stored_data.len();
+            let mut data_changes = vec![];
+            for (i, (old, new)) in stored_data.iter().zip(new_data).enumerate(){
+                if old != new{
+                    data_changes.push(i)
+                }
+            }
+
+            Self{
+                data_changes,
+                _allocates,
+                sp_changes,
+                returned
+            }
+        }
+
+        /// check if only data alteration present are allowed
+        fn check_allowed_data_changes(&self, allow: &[usize])->Result<(), ()>{
+            for x in &self.data_changes{
+                if !allow.contains(x){
+                    return Err(());
+                }
+            }
+            Ok(())
+        }
+    }
+    
+
+    // ---- ----
+    // Single instruction tests
+
+    // ---- ----
+    // Jumps
+    #[test]
+    fn test_jump(){
+        let code = vec![
+            Instruction::Jump(CodePointer(3)),
+            Instruction::Nop,
+            Instruction::Nop,
+            Instruction::Jump(CodePointer(1)),
+        ];
+
+        let mut vm = VirtualMachine::<Data>::new(code, vec![]);
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert_eq!(result.data_changes, vec![]);
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(vm.instruction_pointer, CodePointer(3));
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert_eq!(result.data_changes, vec![]);
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+    }
+
+    #[test]
+    fn test_jump_zero(){
+        let code = vec![
+            Instruction::JumpZ(CodePointer(3), LocalDataPointer(0)), // negative
+            Instruction::JumpZ(CodePointer(3), LocalDataPointer(0)), // negative
+            Instruction::Nop,
+            Instruction::Nop,
+        ];
+
+        let mut vm = VirtualMachine::<Data>::new(code, vec![]);
+        vm.data_stack[&LocalDataPointer(0)] = Data::from_int(1); // not zero, no jump
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert_eq!(result.data_changes, vec![]); // data unchanged
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+
+        vm.data_stack[&LocalDataPointer(0)] = Data::from_int(0); // zero, jumps
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert_eq!(result.data_changes, vec![]); // data unchanged
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        assert_eq!(vm.instruction_pointer, CodePointer(3));
+    }
+
+    #[test]
+    fn test_jump_not_zero(){
+        let code = vec![
+            Instruction::JumpNZ(CodePointer(3), LocalDataPointer(0)), // negative
+            Instruction::Nop,
+            Instruction::Nop,
+            Instruction::JumpNZ(CodePointer(1), LocalDataPointer(0)), // negative
+            Instruction::Nop,
+        ];
+
+        let mut vm = VirtualMachine::<Data>::new(code, vec![]);
+        vm.data_stack[&LocalDataPointer(0)] = Data::from_int(1); // not zero, jump
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert_eq!(result.data_changes, vec![]); // data unchanged
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        assert_eq!(vm.instruction_pointer, CodePointer(3));
+
+        vm.data_stack[&LocalDataPointer(0)] = Data::from_int(0); // zero, no jumps
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert_eq!(result.data_changes, vec![]); // data unchanged
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        assert_eq!(vm.instruction_pointer, CodePointer(4));
+    }
+
+
+    // ---- ----
+    // Binary operator tests
+    /// generate code with sequence of $len uses of binary operator
+    /// used in instruction $instuction with:
+    ///
+    /// + LocalDataPointer(0) as destination
+    /// + LocalDataPointer(1) as left operand
+    /// + LocalDataPointer(2) as right operand
+    macro_rules! generate_code_bin_op{
+        ($instruction: ident, $len: expr) => {
+            {
+                let mut code = vec![];
+                for _ in 0..$len{
+                    code.push(Instruction::$instruction(Binary{
+                        left: LocalDataPointer(1),
+                        right: LocalDataPointer(2),
+                        put_into: LocalDataPointer(0),
+                    }));
+                }
+                VirtualMachine::<Data>::new(code, vec![])
+            }
+        }
+    }
+    
+
+    /// generate test for binary operator
+    /// 
+    /// Arguments:
+    ///
+    /// + $test_name - name for newly generated test
+    /// + $type - int | float
+    /// + $op - name of operator in enum (eg IntEq, IntSum etc)
+    /// + [$($res ;=; $left ;*; $right),*] - coma separated list of triplets:
+    /// + + $res - expected result of evaluation
+    /// + + $left - left argument
+    /// + + $right - left argument
+    ///
+    /// will assert if ```VirtualMachine::execute_instruction``` executed without errors each step
+    /// assert if ```instruction_pointer``` incremented after each instruction
+    /// assert if expected ```$res``` is equal to actual result
+    ///
+    /// Also assert for error with inappropriate type usage
+    macro_rules! generate_type_bin_test{
+        ($test_name: ident, $type: ident, $op: ident, [$($res: expr ;=; $left: expr ;*; $right: expr,)*]) => {
+            #[test]
+            fn $test_name(){
+                let expected = vec![$($res),*];
+                let mut vm = generate_code_bin_op!($op, expected.len());
+
+                let mut _ip = 0;
+                $(
+                    vm.data_stack[&LocalDataPointer(1)] = $left;
+                    vm.data_stack[&LocalDataPointer(2)] = $right;
+                    let result = SideEffects::evaluate_and_check(&mut vm);
+                    assert!(result.check_allowed_data_changes(&[vm.data_stack.raw_stack_offset().0]).is_ok(), "Iteration {}. Data side effects found", _ip);
+                    assert_eq!(result.sp_changes, false, "Iteration {}. Stack pointer altered.", _ip);
+                    assert_eq!(result.returned, Ok(None), "Iteration {}. Expected normal execution flow", _ip);
+                    assert_eq!(vm.instruction_pointer, CodePointer(_ip+1), "Iteration {}. Unexpected instruction pointer value", _ip);
+                    assert_eq!(vm.data_stack[&LocalDataPointer(0)], $res, "Iteration {}. Unexpected operator evaluation result", _ip);
+                    _ip += 1;
+                )*
+
+                generate_type_bin_test!{#error_with_other_types, vm, $type, $op}
+            }
+        };
+
+        (#error_with_other_types, $vm:expr, int, $op: ident) => {
+            // test for use with float
+            $vm.instruction_pointer = CodePointer(0);
+            $vm.data_stack[&LocalDataPointer(1)] = Data::from_float(2.0);
+            $vm.data_stack[&LocalDataPointer(2)] = Data::from_float(4.0);
+            assert_eq!($vm.execute_instruction(), Err(()), "float : float; error expected");
+            // test for use with float and int
+            $vm.instruction_pointer = CodePointer(0);
+            $vm.data_stack[&LocalDataPointer(1)] = Data::from_int(2);
+            $vm.data_stack[&LocalDataPointer(2)] = Data::from_float(4.0);
+            assert_eq!($vm.execute_instruction(), Err(()), "int : float; error expected");
+            // test for use with void
+            $vm.instruction_pointer = CodePointer(0);
+            $vm.data_stack[&LocalDataPointer(1)] = Data::default();
+            $vm.data_stack[&LocalDataPointer(2)] = Data::from_int(4);
+            assert_eq!($vm.execute_instruction(), Err(()), "void; error expected");
+        };
+
+        (#error_with_other_types, $vm:expr, float, $op: ident) => {
+            // test for use with float
+            $vm.instruction_pointer = CodePointer(0);
+            $vm.data_stack[&LocalDataPointer(1)] = Data::from_int(2);
+            $vm.data_stack[&LocalDataPointer(2)] = Data::from_int(4);
+            assert_eq!($vm.execute_instruction(), Err(()), "int : int; error expected");
+            // test for use with float and int
+            $vm.instruction_pointer = CodePointer(0);
+            $vm.data_stack[&LocalDataPointer(1)] = Data::from_int(2);
+            $vm.data_stack[&LocalDataPointer(2)] = Data::from_float(4.0);
+            assert_eq!($vm.execute_instruction(), Err(()), "int : float; error expected");
+            // test for use with void
+            $vm.instruction_pointer = CodePointer(0);
+            $vm.data_stack[&LocalDataPointer(1)] = Data::from_float(2.0);
+            $vm.data_stack[&LocalDataPointer(2)] = Data::default();
+            assert_eq!($vm.execute_instruction(), Err(()), "void; error expected");
+        };
+    }
+
+
+    // ---- ----
+    // Int comparison
+    generate_type_bin_test!{
+        test_int_eq, 
+        int, IntEq,
+        [
+            Data::from_int(1) ;=; Data::from_int(2) ;*; Data::from_int(2),
+            Data::from_int(0) ;=; Data::from_int(2) ;*; Data::from_int(4),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_int_not_eq, 
+        int, IntNotEq,
+        [
+            Data::from_int(0) ;=; Data::from_int(2) ;*; Data::from_int(2),
+            Data::from_int(1) ;=; Data::from_int(2) ;*; Data::from_int(4),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_int_less, 
+        int, IntLess,
+        [
+            Data::from_int(0) ;=; Data::from_int(2) ;*; Data::from_int(2),
+            Data::from_int(0) ;=; Data::from_int(3) ;*; Data::from_int(2),
+            Data::from_int(1) ;=; Data::from_int(2) ;*; Data::from_int(4),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_int_less_or_eq, 
+        int, IntLessOrEq,
+        [
+            Data::from_int(1) ;=; Data::from_int(2) ;*; Data::from_int(2),
+            Data::from_int(0) ;=; Data::from_int(3) ;*; Data::from_int(2),
+            Data::from_int(1) ;=; Data::from_int(2) ;*; Data::from_int(4),
+        ]
+    }
+
+    // ---- ----
+    // Float comparison
+    generate_type_bin_test!{
+        test_float_eq, 
+        float, FloatEq,
+        [
+            Data::from_int(1) ;=; Data::from_float(2.0) ;*; Data::from_float(2.0),
+            Data::from_int(0) ;=; Data::from_float(2.0) ;*; Data::from_float(4.0),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_float_not_eq, 
+        float, FloatNotEq,
+        [
+            Data::from_int(0) ;=; Data::from_float(2.0) ;*; Data::from_float(2.0),
+            Data::from_int(1) ;=; Data::from_float(2.0) ;*; Data::from_float(4.0),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_float_less, 
+        float, FloatLess,
+        [
+            Data::from_int(0) ;=; Data::from_float(2.0) ;*; Data::from_float(2.0),
+            Data::from_int(1) ;=; Data::from_float(2.0) ;*; Data::from_float(4.0),
+            Data::from_int(0) ;=; Data::from_float(5.0) ;*; Data::from_float(-4.3),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_float_less_or_eq, 
+        float, FloatLessOrEq,
+        [
+            Data::from_int(1) ;=; Data::from_float(2.0) ;*; Data::from_float(2.0),
+            Data::from_int(1) ;=; Data::from_float(2.0) ;*; Data::from_float(4.0),
+            Data::from_int(0) ;=; Data::from_float(5.0) ;*; Data::from_float(-4.3),
+        ]
+    }
+
+
+    // ---- ----
+    // Int arithmetics
+    generate_type_bin_test!{
+        test_int_sum, 
+        int, IntSum,
+        [
+            Data::from_int(4) ;=; Data::from_int(1) ;*; Data::from_int(3),
+            Data::from_int(-1) ;=; Data::from_int(3) ;*; Data::from_int(-4),
+            Data::from_int(9) ;=; Data::from_int(5) ;*; Data::from_int(4),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_int_diff, 
+        int, IntDiff,
+        [
+            Data::from_int(-2) ;=; Data::from_int(1) ;*; Data::from_int(3),
+            Data::from_int(7) ;=; Data::from_int(3) ;*; Data::from_int(-4),
+            Data::from_int(1) ;=; Data::from_int(5) ;*; Data::from_int(4),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_int_mul, 
+        int, IntMul,
+        [
+            Data::from_int(3) ;=; Data::from_int(1) ;*; Data::from_int(3),
+            Data::from_int(-12) ;=; Data::from_int(3) ;*; Data::from_int(-4),
+            Data::from_int(20) ;=; Data::from_int(5) ;*; Data::from_int(4),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_int_div, 
+        int, IntDiv,
+        [
+            Data::from_int(0) ;=; Data::from_int(1) ;*; Data::from_int(3),
+            Data::from_int(0) ;=; Data::from_int(3) ;*; Data::from_int(-4),
+            Data::from_int(-1) ;=; Data::from_int(5) ;*; Data::from_int(-4),
+            Data::from_int(-1) ;=; Data::from_int(-5) ;*; Data::from_int(4),
+            Data::from_int(1) ;=; Data::from_int(5) ;*; Data::from_int(4),
+            Data::from_int(1) ;=; Data::from_int(-5) ;*; Data::from_int(-4),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_int_mod, 
+        int, IntMod,
+        [
+            Data::from_int(1) ;=; Data::from_int(1) ;*; Data::from_int(3),
+            Data::from_int(3) ;=; Data::from_int(3) ;*; Data::from_int(-4),
+            Data::from_int(1) ;=; Data::from_int(5) ;*; Data::from_int(-4),
+            Data::from_int(-1) ;=; Data::from_int(-5) ;*; Data::from_int(4),
+            Data::from_int(1) ;=; Data::from_int(5) ;*; Data::from_int(4),
+            Data::from_int(-1) ;=; Data::from_int(-5) ;*; Data::from_int(-4),
+        ]
+    }
+
+    // ---- ----
+    // Float arithmetics
+    generate_type_bin_test!{
+        test_float_sum, 
+        float, FloatSum,
+        [
+            Data::from_float(3.13) ;=; Data::from_float(3.2) ;*; Data::from_float(-0.07),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_float_diff, 
+        float, FloatDiff,
+        [
+            Data::from_float(3.27) ;=; Data::from_float(3.2) ;*; Data::from_float(-0.07),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_float_mul, 
+        float, FloatMul,
+        [
+            Data::from_float(-0.224) ;=; Data::from_float(3.2) ;*; Data::from_float(-0.07),
+        ]
+    }
+
+    generate_type_bin_test!{
+        test_float_div, 
+        float, FloatDiv,
+        [
+            Data::from_float(3.2/-0.07) ;=; Data::from_float(3.2) ;*; Data::from_float(-0.07),
+        ]
+    }
+
+    // ---- ----
+    // Pointers
+    #[test]
+    fn test_pointer_get(){
+        let code = vec![
+            Instruction::PointerGet(InstructionPointerGet{
+                pointer: LocalDataPointer(1),
+                copy_to: LocalDataPointer(0),
+            }),
+            Instruction::PointerGet(InstructionPointerGet{
+                pointer: LocalDataPointer(1),
+                copy_to: LocalDataPointer(0),
+            }),
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![]);
+        vm.data_stack[&LocalDataPointer(1)] = ArbitraryDataEnum::Int(2);
+        vm.data_stack[&LocalDataPointer(2)] = ArbitraryDataEnum::Float(3.14);
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[0]).is_ok());
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        assert_eq!(vm.data_stack[&LocalDataPointer(0)], ArbitraryDataEnum::Float(3.14));
+
+        vm.data_stack.stack_pointer_add(3);
+        vm.data_stack[&LocalDataPointer(1)] = ArbitraryDataEnum::Int(1);
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[3]).is_ok());
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        assert_eq!(vm.data_stack[&LocalDataPointer(0)], ArbitraryDataEnum::Int(2));
+    }
+
+    #[test]
+    fn test_pointer_set(){
+        let code = vec![
+            Instruction::PointerSet(InstructionPointerSet{
+                pointer: LocalDataPointer(1),
+                copy_from: LocalDataPointer(0),
+            }),
+            Instruction::PointerSet(InstructionPointerSet{
+                pointer: LocalDataPointer(1),
+                copy_from: LocalDataPointer(0),
+            }),
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![]);
+        vm.data_stack[&LocalDataPointer(1)] = ArbitraryDataEnum::Int(2);
+        vm.data_stack[&LocalDataPointer(0)] = ArbitraryDataEnum::Float(3.14);
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[2]).is_ok());
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        assert_eq!(vm.data_stack[&LocalDataPointer(2)], ArbitraryDataEnum::Float(3.14));
+
+        vm.data_stack.stack_pointer_add(3);
+        vm.data_stack[&LocalDataPointer(1)] = ArbitraryDataEnum::Int(2);
+        vm.data_stack[&LocalDataPointer(0)] = ArbitraryDataEnum::Float(3.14);
+        vm.data_stack[&LocalDataPointer(2)] = ArbitraryDataEnum::Void;
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[5]).is_ok());
+        assert_eq!(result.sp_changes, false); // stack pointer unchanged
+        assert_eq!(result.returned, Ok(None)); // no errors/no evaluation end
+        vm.data_stack.stack_pointer_add(-3);
+        assert_eq!(vm.data_stack[&LocalDataPointer(2)], ArbitraryDataEnum::Float(3.14));
+    }
+
+
+    // ---- ----
+    // Function Call
+    #[test]
+    fn test_stack_pointer_add(){
+        let code = vec![
+            Instruction::StackPointerAdd(4),
+            Instruction::StackPointerAdd(-4),
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![]);
+        vm.data_stack[&LocalDataPointer(5)] = ArbitraryDataEnum::Void;
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(vm.data_stack.raw_stack_offset(), &LocalDataPointer(4));
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(vm.data_stack.raw_stack_offset(), &LocalDataPointer(0));
+        assert_eq!(vm.instruction_pointer, CodePointer(2));
+    }
+
+    #[test]
+    fn call_and_return(){
+        let code = vec![
+            Instruction::Call,
+            Instruction::Return,
+            Instruction::Return,
+            Instruction::Call,
+            Instruction::Return
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![
+            CodePointer(2),
+            CodePointer(3),
+        ]);
+
+        // prepare call
+        vm.data_stack[&LocalDataPointer(0)] = ArbitraryDataEnum::Int(1);
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(3));
+
+        // second call
+        vm.data_stack[&LocalDataPointer(0)] = ArbitraryDataEnum::Int(0);
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(2));
+
+        // return
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(4));
+
+        // second return
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+
+        // third return - program exit
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        // returns value at cell 0, which was set above
+        assert_eq!(result.returned, Ok(Some(ArbitraryDataEnum::Int(0))));
+        assert_eq!(result.sp_changes, false);
+        // since execution stopped ip does not matter
+    }
+    
+    // ---- ----
+    // Constants
+    #[test]
+    fn test_int_const(){
+        let code = vec![
+            Instruction::IntConst(LocalDataPointer(0), 5),
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![]);
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[0]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+        assert_eq!(vm.data_stack.raw_data()[0], ArbitraryDataEnum::Int(5));
+    }
+
+    #[test]
+    fn test_float_const(){
+        let code = vec![
+            Instruction::FloatConst(LocalDataPointer(0), 3.11),
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![]);
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[0]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+        assert_eq!(vm.data_stack.raw_data()[0], ArbitraryDataEnum::Float(3.11));
+    }
+
+    // ---- ----
+    // Other
+    #[test]
+    fn test_inc(){
+        let code = vec![
+            Instruction::Inc(LocalDataPointer(1)),
+            Instruction::Inc(LocalDataPointer(2)),
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![]);
+
+        vm.data_stack[&LocalDataPointer(1)] = ArbitraryDataEnum::Int(1);
+        vm.data_stack[&LocalDataPointer(2)] = ArbitraryDataEnum::Int(-1);
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[1]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+        assert_eq!(vm.data_stack.raw_data()[1], ArbitraryDataEnum::Int(2));
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[2]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(2));
+        assert_eq!(vm.data_stack.raw_data()[2], ArbitraryDataEnum::Int(0));
+    }
+
+    #[test]
+    fn test_dec(){
+        let code = vec![
+            Instruction::Dec(LocalDataPointer(1)),
+            Instruction::Dec(LocalDataPointer(2)),
+        ];
+
+        let mut vm = VirtualMachine::new(code, vec![]);
+
+        vm.data_stack[&LocalDataPointer(1)] = ArbitraryDataEnum::Int(1);
+        vm.data_stack[&LocalDataPointer(2)] = ArbitraryDataEnum::Int(-1);
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[1]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+        assert_eq!(vm.data_stack.raw_data()[1], ArbitraryDataEnum::Int(0));
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[2]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(2));
+        assert_eq!(vm.data_stack.raw_data()[2], ArbitraryDataEnum::Int(-2));
+    }
+
+    #[test]
+    fn test_nop(){
+        let code = vec![
+            Instruction::Nop
+        ];
+        let mut vm = VirtualMachine::new(code, vec![]);
+
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+    }
+
+    #[test]
+    fn copy(){
+        let code = vec![
+            Instruction::Copy(InstructionCopy{
+                source: LocalDataPointer(0),
+                destination: LocalDataPointer(2),
+            }),
+        ];
+        let mut vm = VirtualMachine::new(code, vec![]);
+        vm.data_stack[&LocalDataPointer(0)] = ArbitraryDataEnum::Int(2);
+        let result = SideEffects::evaluate_and_check(&mut vm);
+        assert!(result.check_allowed_data_changes(&[2]).is_ok());
+        assert_eq!(result.returned, Ok(None));
+        assert_eq!(result.sp_changes, false);
+        assert_eq!(vm.instruction_pointer, CodePointer(1));
+        assert_eq!(vm.data_stack.raw_data()[2], ArbitraryDataEnum::Int(2));
+    }
 }
+
