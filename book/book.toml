@@ -1,0 +1,8 @@
+[book]
+authors = ["Hukumka"]
+multilingual = false
+src = "src"
+title = "Interactives"
+
+[output.html]
+mathjax-support=true
