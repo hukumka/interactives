@@ -3,6 +3,8 @@
 Interactives is application for generating web pages, which can be used to 
 evaluate code step by step with ability to see intermediate results
 
+Tutorial: <https://hukumka.github.io/interactives_book/>
+
 ## Why?
 
 To help building visualisation of certain algorithms for students
