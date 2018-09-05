@@ -1,0 +1,74 @@
+.code *{
+    font-family: monospace
+}
+
+div.code{
+    background-color: #181818;
+    color: white;
+    padding-top: 0.5em; padding-bottom: 0.5em;
+    grid-area: code;
+    padding-right: 3em;
+    border: 0px solid #555;
+    border-width: 0px 2px 0px 2px;
+}
+
+.code span.c-type{
+    color: lightgreen;
+}
+
+.code span.tab{
+    margin-left: 2.3em;
+}
+
+.code span.keyword{
+    color: orange
+}
+
+.code span.constant{
+    color: teal
+}
+
+.code span.function-name{
+    color: lightblue
+}
+
+.code span.line-number{
+    position: relative;
+    display: inline-block;
+    width: 4em;
+    margin: 0em 1em;
+    text-align: center;
+    border-bottom: solid 1px #333;
+
+    -webkit-user-select: none;
+	-khtml-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	-o-user-select: none;
+	user-select: none;
+}
+
+.code span.line-number.clickable{
+    cursor: pointer;
+}
+
+.code span.line-number:before{
+    position: absolute;
+    color: #000;
+    width: 1.2em;
+    left: 0em;
+}
+
+.code span.breakpoint:before{
+    background-color: #fbb;
+    content: 'bp';
+}
+.code span.current:before{
+    background-color: #ffb;
+    content: "cr";
+}
+.code span.breakpoint.current:before{
+    background-color: #fb8;
+    content: "bc";
+}
+

@@ -9,11 +9,11 @@
     vec_resize_default
 )]
 
-mod types;
+mod data;
 
 use std::collections::HashSet;
 
-use types::{
+use data::{
     ArbitraryData,
     LocalDataPointer,
     DataStack,

@@ -11,13 +11,13 @@ For our C part of tutorial we will want to write:
 Let's go with predicate
 
 \\[
-    P(f, x) = f
+    P(f, x) = 2 sqrt(f)
 \\]
 
 corresponding to solution
 
 \\[
-    f(x) = k*e^x
+    f(x) = x^2
 \\]
 
 

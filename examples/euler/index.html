@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>html page</title>
+
+    <link type="text/css" rel="stylesheet" href="vm/code.css">
+    <link type="text/css" rel="stylesheet" href="page.css">
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="vm/vm.js"></script>
+    <script>var compiled = {commands: [[18, 2, 100],[17, 1, 2],[19, 3, 1],[17, 2, 3],[17, 4, 2],[16],[17, 5, 1],[16],[25, 4, 4, 5],[17, 3, 4],[18, 5, 2],[17, 6, 1],[16],[23, 5],[22],[24, 5],[17, 4, 5],[17, 5, 4],[16],[18, 6, 0],[7, 5, 5, 6],[19, 6, 1],[15, 5, 6],[18, 6, 1],[17, 5, 6],[17, 6, 5],[16],[17, 7, 1],[16],[5, 6, 6, 7],[1, 63, 6],[17, 6, 4],[16],[17, 7, 5],[16],[7, 6, 6, 7],[18, 7, 4],[17, 8, 4],[16],[17, 9, 5],[16],[18, 10, 1],[8, 9, 9, 10],[7, 8, 8, 9],[14, 8, 8],[17, 9, 3],[16],[23, 7],[22],[24, 7],[15, 6, 7],[18, 6, 0],[17, 7, 4],[16],[17, 8, 1],[16],[23, 6],[22],[24, 6],[20, 6, 5],[12, 6],[14, 6, 6],[0, 25],[21],[17, 3, 1],[16],[18, 4, 2],[18, 5, 1],[17, 6, 1],[16],[23, 5],[22],[24, 5],[9, 4, 4, 5],[17, 5, 2],[16],[9, 4, 4, 5],[7, 3, 3, 4],[17, 0, 3],[21],[21]], function_enters: [[3, 0],[4, 64]], function_links: [[0, 'display'],[1, 'sqrt'],[2, 'alloc_float']], statements: [0, 2, 4, 10, 17, 25, 31, 51, 64], variable_transactions: [{name: 'SIZE', add: true, pos: 1, id: 1, pair: 9}, {name: 'end', add: true, pos: 3, id: 2, pair: 8}, {name: 'step', add: true, pos: 9, id: 3, pair: 7}, {name: 'data', add: true, pos: 16, id: 4, pair: 6}, {name: 'i', add: true, pos: 24, id: 5, pair: 5}, {name: 'i', add: false, pos: 63, id: 5, pair: 4}, {name: 'data', add: false, pos: 63, id: 4, pair: 3}, {name: 'step', add: false, pos: 63, id: 3, pair: 2}, {name: 'end', add: false, pos: 63, id: 2, pair: 1}, {name: 'SIZE', add: false, pos: 63, id: 1, pair: 0}, {name: 'value', add: true, pos: 64, id: 1, pair: 13}, {name: 'step', add: true, pos: 64, id: 2, pair: 12}, {name: 'step', add: false, pos: 81, id: 2, pair: 11}, {name: 'value', add: false, pos: 81, id: 1, pair: 10}]}</script>
+    <script src="vm/interface.js"></script>
+
+    <script>
+        var graph = null;
+        var graph_data = {
+            x: null,
+            y: null
+        }
+        var vm = null;
+        // create virtual machine instance
+        var functions = []
+        functions['sqrt'] = {
+            arg_count: 1,
+            func: function(x){
+                return Math.sqrt(x)
+            }
+        }
+        functions['alloc_float'] = {
+            arg_count: 1,
+            func: "vm.alloc"
+        }
+        functions['display'] = {
+            arg_count: 2,
+            func: function(pointer, size){
+                var y = vm.get_array(pointer, size);
+                graph_data.y = y;
+                // you dont want to actually redraw graph each iteration
+                // since its perfomance heavy action
+                // instead you use VM on_break hook to redraw only then
+                // VM pauses execution due to breakpoint or exit execution
+                // due to reaching end of program
+            }
+        }
+
+        // initialize debugger interface
+
+        var prev_load = window.onload;
+        window.onload = function(){
+            vm = initialize_vm_interface(functions);
+            graph = document.getElementById('graph');
+            Plotly.plot(graph, [graph_data], {margin: {t: 0} });
+
+            vm.on_break = function(){
+                // update grapth
+                if(graph_data.y === null){
+                    return;
+                }
+                var x = [];
+                var STEP = 0.01;
+                for(var i=0; i<graph_data.y.length; ++i){
+                    x.push(i*STEP);
+                }
+                graph_data.x = x;
+                Plotly.redraw(graph);
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div class="popups">
+        <div id="hover_image"></div>
+    </div>
+
+    <div class="interface">
+        <div id="controls">
+            <div id="flow-control">
+                <a id="run">run</a><a id="step">step</a><a id="step-in">step-in</a>
+            </div>
+            <div id="variables"></div>
+        </div>
+        <div class="code">
+            <div class = "function-declaration"><span class="line-number">0</span><span class = "function-head"><span class = "function-name"><span class = "variable"><span class = "c-type">void</span> <span class = "variable-name">display</span></span></span><span class = "operator">(</span><span class = "variable"><span class = "c-type">float*</span> <span class = "variable-name">x</span></span>, <span class = "variable"><span class = "c-type">int</span> <span class = "variable-name">size</span></span><span class = "operator">);</span></span></div><div class = "function-declaration"><span class="line-number">1</span><span class = "function-head"><span class = "function-name"><span class = "variable"><span class = "c-type">float</span> <span class = "variable-name">sqrt</span></span></span><span class = "operator">(</span><span class = "variable"><span class = "c-type">float</span> <span class = "variable-name">x</span></span><span class = "operator">);</span></span></div><div class = "function-declaration"><span class="line-number">2</span><span class = "function-head"><span class = "function-name"><span class = "variable"><span class = "c-type">float*</span> <span class = "variable-name">alloc_float</span></span></span><span class = "operator">(</span><span class = "variable"><span class = "c-type">int</span> <span class = "variable-name">size</span></span><span class = "operator">);</span></span></div><div class = "function-definition"><span class="line-number">3</span><span class = "function-head"><span class = "function-name"><span class = "variable"><span class = "c-type">int</span> <span class = "variable-name">main</span></span></span><span class = "operator">(</span><span class = "operator">){</span></span><div class = "function-body"><div class = "statement"data_address = "0"><span class="line-number clickable" data_address="0">4</span><span class="tabs"><span class="tab"></span><span class = "variable-definition"><span class = "variable"><span class = "c-type">int</span> <span class = "variable-name"data_var_offset = "1"data_var_transaction = "0">SIZE</span></span><span class = "variable-definition-eq">=</span><span class = "constant">100</span></span>;</span></div><div class = "statement"data_address = "2"><span class="line-number clickable" data_address="2">5</span><span class="tabs"><span class="tab"></span><span class = "variable-definition"><span class = "variable"><span class = "c-type">float</span> <span class = "variable-name"data_var_offset = "2"data_var_transaction = "1">end</span></span><span class = "variable-definition-eq">=</span><span class = "constant">1.0</span></span>;</span></div><div class = "statement"data_address = "4"><span class="line-number clickable" data_address="4">6</span><span class="tabs"><span class="tab"></span><span class = "variable-definition"><span class = "variable"><span class = "c-type">float</span> <span class = "variable-name"data_var_offset = "3"data_var_transaction = "2">step</span></span><span class = "variable-definition-eq">=</span><span class = "variable-name"data_var_offset = "2"data_var_transaction = "1">end</span><span class = "operator">/</span><span class = "variable-name"data_var_offset = "1"data_var_transaction = "0">SIZE</span></span>;</span></div><div class = "statement"data_address = "10"><span class="line-number clickable" data_address="10">7</span><span class="tabs"><span class="tab"></span><span class = "variable-definition"><span class = "variable"><span class = "c-type">float*</span> <span class = "variable-name"data_var_offset = "4"data_var_transaction = "3">data</span></span><span class = "variable-definition-eq">=</span><span class = "function-name"><span class = "variable-name"data_var_offset = "$2"data_var_transaction = "0">alloc_float</span></span><span class = "operator">(</span><span class = "variable-name"data_var_offset = "1"data_var_transaction = "0">SIZE</span><span class = "operator">)</span></span>;</span></div><div class = "statement"data_address = "17"><span class="line-number clickable" data_address="17">8</span><span class="tabs"><span class="tab"></span><span class = "variable-name"data_var_offset = "4"data_var_transaction = "3">data</span><span class = "operator">[</span><span class = "constant">0</span><span class = "operator">]</span><span class = "operator">=</span><span class = "constant">1.0</span>;</span></div><div class = "statement"data_address = "25"><span class="line-number clickable" data_address="25">9</span><span class="tabs"><span class="tab"></span><span class = "keyword">for</span>(<span class = "variable-definition"><span class = "variable"><span class = "c-type">int</span> <span class = "variable-name"data_var_offset = "5"data_var_transaction = "4">i</span></span><span class = "variable-definition-eq">=</span><span class = "constant">1</span></span>;<span class = "variable-name"data_var_offset = "5"data_var_transaction = "4">i</span><span class = "operator">&lt;</span><span class = "variable-name"data_var_offset = "1"data_var_transaction = "0">SIZE</span>;<span class = "operator">++</span><span class = "variable-name"data_var_offset = "5"data_var_transaction = "4">i</span>){</span></div><div class = "statement"data_address = "31"><span class="line-number clickable" data_address="31">10</span><span class="tabs"><span class="tab"></span><span class="tab"></span><span class = "variable-name"data_var_offset = "4"data_var_transaction = "3">data</span><span class = "operator">[</span><span class = "variable-name"data_var_offset = "5"data_var_transaction = "4">i</span><span class = "operator">]</span><span class = "operator">=</span><span class = "function-name"><span class = "variable-name"data_var_offset = "$4"data_var_transaction = "0">step_func</span></span><span class = "operator">(</span><span class = "variable-name"data_var_offset = "4"data_var_transaction = "3">data</span><span class = "operator">[</span><span class = "variable-name"data_var_offset = "5"data_var_transaction = "4">i</span><span class = "operator">-</span><span class = "constant">1</span><span class = "operator">]</span>, <span class = "variable-name"data_var_offset = "3"data_var_transaction = "2">step</span><span class = "operator">)</span>;</span></div><div class = "statement"data_address = "51"><span class="line-number clickable" data_address="51">11</span><span class="tabs"><span class="tab"></span><span class="tab"></span><span class = "function-name"><span class = "variable-name"data_var_offset = "$0"data_var_transaction = "0">display</span></span><span class = "operator">(</span><span class = "variable-name"data_var_offset = "4"data_var_transaction = "3">data</span>, <span class = "variable-name"data_var_offset = "1"data_var_transaction = "0">SIZE</span><span class = "operator">)</span>;</span></div><span class="line-number">12</span><span class="tabs"><span class="tab"></span>}</span></div><span class="line-number">13</span><span class = "operator">}</span></div><div class = "function-definition"><span class="line-number">14</span><span class = "function-head"><span class = "function-name"><span class = "variable"><span class = "c-type">float</span> <span class = "variable-name">step_func</span></span></span><span class = "operator">(</span><span class = "variable"><span class = "c-type">float</span> <span class = "variable-name"data_var_offset = "1"data_var_transaction = "10">value</span></span>, <span class = "variable"><span class = "c-type">float</span> <span class = "variable-name"data_var_offset = "2"data_var_transaction = "11">step</span></span><span class = "operator">){</span></span><div class = "function-body"><div class = "statement"data_address = "64"><span class="line-number clickable" data_address="64">15</span><span class="tabs"><span class="tab"></span><span class = "keyword">return </span><span class = "variable-name"data_var_offset = "1"data_var_transaction = "10">value</span><span class = "operator">+</span><span class = "expr-bracket">(</span><span class = "constant">2</span><span class = "operator">*</span><span class = "function-name"><span class = "variable-name"data_var_offset = "$1"data_var_transaction = "0">sqrt</span></span><span class = "operator">(</span><span class = "variable-name"data_var_offset = "1"data_var_transaction = "10">value</span><span class = "operator">)</span><span class = "expr-bracket">)</span><span class = "operator">*</span><span class = "variable-name"data_var_offset = "2"data_var_transaction = "11">step</span>;</span></div></div><span class="line-number">16</span><span class = "operator">}</span></div>
+        </div>
+        <div id="graph">
+        </div>
+    </div>
+</body>
+</html>

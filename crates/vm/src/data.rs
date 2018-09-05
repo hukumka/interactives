@@ -2,6 +2,7 @@
 
 use std::fmt::Debug;
 use std::ops::{Index, IndexMut};
+use std::collections::HashMap;
 
 
 /// Trait for data structure represention arbitrary data
@@ -108,6 +109,13 @@ pub struct DataStack<Data>{
     /// void value, reference to which returned in case of 
     /// out of bound indexing (to avoid panicing)
     void: Data,
+
+    /// each allocation held in separate vector
+    /// which is referenced by negative i32 value.
+    /// bit 32 always 1 (as negative)
+    /// bits (31-16) are id of chuck
+    /// bits (15-0) are offset in chunk
+    allocated: HashMap<i32, Vec<Data>>,
 }
 
 
@@ -147,7 +155,14 @@ impl<Data: ArbitraryData> DataStack<Data>{
             stack: vec![],
             stack_pointer: LocalDataPointer(0),
             void: Data::default(),
+
+            allocated: HashMap::new(),
         }
+    }
+
+    /// returns pointer to allocated array, or 0 if allocation failed
+    pub fn allocate(&mut self, size: usize)->i32{
+        0
     }
 
     /// Increase or decrease stack_pointer (moving current stack frame)
