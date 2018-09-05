@@ -19,7 +19,7 @@
             y: null
         }}
         var vm = null;
-        // create virtual machine instance
+
         var functions = []
         functions['sqrt'] = {{
             arg_count: 1,
@@ -34,8 +34,7 @@
         functions['display'] = {{
             arg_count: 2,
             func: function(pointer, size){{
-                var y = vm.get_array(pointer, size);
-                graph_data.y = y;
+                graph_data.y = vm.get_array(pointer, size);
                 // you dont want to actually redraw graph each iteration
                 // since its perfomance heavy action
                 // instead you use VM on_break hook to redraw only then

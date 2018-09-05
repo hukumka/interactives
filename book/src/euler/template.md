@@ -114,3 +114,25 @@ functions['alloc_float'] = {{
 Where 'vm.alloc' is magical constant. Its *important* to notice that it suitable only for such types as float, int and pointers. So far it's all supported types, but with shipment of *struct* feature (and there for appearance of not 1-sized types will be marked as deprecated.
 
 
+## Setup vm
+
+Add global variable for storing virtual machine instance, which will be initialized after window loads.
+
+```
+var vm=null;
+
+window.onload = function(){
+    vm = initialize_vm_interface(functions);
+}
+```
+
+## Build the thing
+After all done, actual page might be created by running command:
+```
+interactives 0.c -t template.html -o index.html
+```
+
+or using cargo in sources repo:
+```
+cargo run -- 0.c -t template.html -o index.html
+```

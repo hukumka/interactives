@@ -6,6 +6,8 @@ For our C part of tutorial we will want to write:
 * some way to allocate array (see [limitations](#limitations))
 * some way to tell web page we want to draw graph using data we calculated
 
+But first you will need to create new file "0.c"
+
 ## predicate
 
 Let's go with predicate
