@@ -366,11 +366,11 @@ impl<'a> Parseable<'a> for Statement<'a> {
             match key.token_str() {
                 "if" => {
                     walker.put_back();
-                    Condition::parse(walker, error_stream).map(|x| Statement::Condition(x))
+                    Condition::parse(walker, error_stream).map(Statement::Condition)
                 },
                 "for" => {
                     walker.put_back();
-                    ForLoop::parse(walker, error_stream).map(|x| Statement::ForLoop(x))
+                    ForLoop::parse(walker, error_stream).map(Statement::ForLoop)
                 },
                 "return" => {
                     let expr = Expression::parse(walker, error_stream)?;

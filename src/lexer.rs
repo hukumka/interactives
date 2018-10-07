@@ -57,7 +57,7 @@ pub enum TokenType{
 
 impl TokenType{
     /// Returns `TokenType` name as string
-    fn as_str(&self)->&'static str{
+    fn as_str(self)->&'static str{
         match self{
             TokenType::Name => "Name",
             TokenType::Operator => "Operator",
@@ -160,7 +160,7 @@ impl<'a> Preprocessor<'a>{
     /// Shifts iterator to position of character atfer token, or to the end if no such.
     fn eat_token(&self, char_iter: &mut CharsIter<'a>)->Option<Result<TokenData<'a>, Error<'a>>>{
         loop{
-            let first = char_iter.peek().map(|&x| x);
+            let first = char_iter.peek().cloned();
             if let Some((pos, f)) = first{ // guarantees what iterator has at least 1 character, so non of functions will panic
                 return Some(
                     if f.is_alphabetic() || f == '_' { 
@@ -216,7 +216,7 @@ impl<'a> Preprocessor<'a>{
     fn eat_operator(&self, char_iter: &mut CharsIter<'a>)->Result<TokenData<'a>, Error<'a>>{
         Ok(TokenData::new(
             self.code_text, 
-            self.get_matching_range(char_iter, |x| is_operator(x)),
+            self.get_matching_range(char_iter, is_operator),
             TokenType::Operator
         ))
     }
@@ -227,27 +227,27 @@ impl<'a> Preprocessor<'a>{
     /// panic if `char_iter` iterator is empty
     fn eat_numeric(&self, char_iter: &mut CharsIter<'a>)->Result<TokenData<'a>, Error<'a>>{
         let int_range = self.get_matching_range(char_iter, |x| x.is_digit(10));
-        let _dot_range = if let Some(_) = char_iter.peek(){
+        let _dot_range = if char_iter.peek().is_some(){
             self.get_matching_range(char_iter, |x| x == '.')
         }else{
             int_range   
         };
-        let _float_range = if let Some(_) = char_iter.peek(){
+        let _float_range = if char_iter.peek().is_some(){
             self.get_matching_range(char_iter, |x| x.is_digit(10))
         }else{
             _dot_range  
         };
-        let _exp = if let Some(_) = char_iter.peek(){
+        let _exp = if char_iter.peek().is_some(){
             self.get_matching_range(char_iter, |x| x == 'e')
         }else{
             _float_range  
         };
-        let _minus = if let Some(_) = char_iter.peek(){
+        let _minus = if char_iter.peek().is_some(){
             self.get_matching_range(char_iter, |x| x == '-')
         }else{
             _exp  
         };
-        let exp_value = if let Some(_) = char_iter.peek(){
+        let exp_value = if char_iter.peek().is_some(){
             self.get_matching_range(char_iter, |x| x.is_digit(10))
         }else{
             _minus
@@ -274,11 +274,11 @@ impl<'a> Preprocessor<'a>{
     /// # Panics
     /// panic if `char_iter` iterator is empty
     fn get_matching_range<Func: Fn(char)->bool>(&self, char_iter: &mut CharsIter<'a>, filter: Func)->(usize, usize){
-        let (start_pos, char_) = char_iter.peek().unwrap().clone();
+        let (start_pos, char_) = *char_iter.peek().unwrap();
         let mut end_pos = start_pos;
         let mut prev_char = char_;
         loop{
-            let peek = char_iter.peek().map(|&x| x);
+            let peek = char_iter.peek().cloned();
             match peek{
                 Some((pos, c)) if filter(c) => {
                     char_iter.next().unwrap(); // cannot panic, since existance of next character checked above.
