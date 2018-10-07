@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/hukumka/interactives.svg?branch=master)](https://travis-ci.org/hukumka/interactives)
 # Interactive c-alike language web debuger.
 
 Interactives is application for generating web pages, which can be used to 
