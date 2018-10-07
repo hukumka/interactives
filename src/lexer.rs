@@ -265,7 +265,7 @@ impl<'a> Preprocessor<'a>{
                 return Ok(TokenData::new(self.code_text, (start_pos, pos + char_.len_utf8()), TokenType::Value));
             }
         }
-        return Err(self.error(ERROR_UNCLOSED_STRING, start_pos));
+        Err(self.error(ERROR_UNCLOSED_STRING, start_pos))
     }
 
     /// Returns largest interval from start, on which every character match filter, and shift

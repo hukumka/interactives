@@ -612,26 +612,22 @@ impl<'a> Parseable<'a> for Expression<'a>{
 	    while let Some(operator) = walker.expect_operator_checked(
 	        Self::can_be_binary
 	    ){
-	        loop{
-	            if let Some(head) = operator_stack.pop(){
-	                if Self::is_precede(head, operator){
-	                    // cannot panic, since amount of operands always greater then amount of
-	                    // operators.
-	                    let right = operand_stack.pop().unwrap();
-	                    let left = operand_stack.pop().unwrap();
-	                    let expr = Expression(Box::new(ExpressionData::BinaryOperator(
-	                        BinaryOperator{
-	                            left,
-	                            right,
-	                            operator: head
-	                        }
-	                    )));
-	                    operand_stack.push(expr);
-	                }else{
-	                    operator_stack.push(head);
-	                    break;
-	                }
+	        while let Some(head) = operator_stack.pop(){
+	            if Self::is_precede(head, operator){
+	                // cannot panic, since amount of operands always greater then amount of
+	                // operators.
+	                let right = operand_stack.pop().unwrap();
+	                let left = operand_stack.pop().unwrap();
+	                let expr = Expression(Box::new(ExpressionData::BinaryOperator(
+	                    BinaryOperator{
+	                        left,
+	                        right,
+	                        operator: head
+	                    }
+	                )));
+	                operand_stack.push(expr);
 	            }else{
+	                operator_stack.push(head);
 	                break;
 	            }
 	        }
@@ -694,7 +690,7 @@ impl<'a> Expression<'a>{
 	}
 
 	fn can_be_binary(op: &str)->bool{
-	    OPERATORS_LEVELS.iter().position(|ref r| r.contains(&op)).is_some()
+	    OPERATORS_LEVELS.iter().any(|ref r| r.contains(&op))
 	}
 
 
@@ -914,7 +910,7 @@ mod tests{
 	        check(i.token_str(), $name);
 	    )}
 	}
-	
+
 	#[test]
 	fn test_expression_base_parse(){
 	    //== single variable

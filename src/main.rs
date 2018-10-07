@@ -86,7 +86,7 @@ fn main() {
     input.read_to_string(&mut code).unwrap();
 
     let line_starts: Vec<usize> = [0 as usize].iter()
-        .map(|x| *x)
+        .cloned()
         .chain(code.char_indices()
                    .filter(|(_, x)| *x == '\n')
                    .map(|(i, _)| i+1)
@@ -160,7 +160,7 @@ fn js_string(code: &[Operation], debug_info: &DebugInfo)->String{
 }
 
 
-fn write_compiled_to_js<'a, T: Write>(writer: &mut T, code: &[Operation],debug_info: &DebugInfo)->std::fmt::Result{
+fn write_compiled_to_js<T: Write>(writer: &mut T, code: &[Operation],debug_info: &DebugInfo)->std::fmt::Result{
     write!(writer, "var compiled = {{commands: [")?;
     let mut iter = code.iter();
     if let Some(op) = iter.next(){

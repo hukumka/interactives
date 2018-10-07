@@ -34,6 +34,12 @@ pub struct Context<'a>{
     current_line: usize,
 }
 
+impl<'a> Default for Context<'a>{
+    fn default()->Self{
+        Self::new()
+    }
+}
+
 impl<'a> Context<'a>{
     pub fn new()->Self{
         Self{
@@ -547,7 +553,7 @@ impl<'a> PageElement<'a> for Condition<'a>{
         }
         let mut else_ = &self.else_;
         // if else is followed by single statement write "else if" block
-        while let &[Statement::Condition(ref cond)] = if let Some(Block{statements: x}) = else_{
+        while let [Statement::Condition(ref cond)] = if let Some(Block{statements: x}) = else_{
             x.as_slice()
         }else{
             &[]

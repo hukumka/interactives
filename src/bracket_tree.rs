@@ -162,7 +162,7 @@ impl<'a> BracketTreeWalker<'a>{
             };
             self.pos = end + 1;
             // cloned not tree, but reference to it
-            Some(BracketTreeWalker{pos: pos+1, end: end, tree: self.tree})
+            Some(BracketTreeWalker{pos: pos+1, end, tree: self.tree})
         }else{
             None
         }

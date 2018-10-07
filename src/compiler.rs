@@ -402,17 +402,17 @@ impl DebugInfo{
 
     /// return data about variable use
     pub fn get_variable_data<'a>(&self, name: &'a TokenData<'a>)->Option<(VariableHandleAddress, usize)>{
-        self.variables.get(&name.get_pos()).map(|x| x.clone())
+        self.variables.get(&name.get_pos()).cloned()
     }
 
     /// return vm code offset for statement
     pub fn get_statement_offset<'a>(&self, statement: &'a Statement<'a>)->Option<usize>{
-        self.statements.get(&statement.first_token().get_pos()).map(|x| *x)
+        self.statements.get(&statement.first_token().get_pos()).cloned()
     }
 
     /// return vm code offset for statement (statement determined by its offset in source)
-    pub fn get_statement_offset_by_pos<'a>(&self, pos: usize)->Option<usize>{
-        self.statements.get(&pos).map(|x| *x)
+    pub fn get_statement_offset_by_pos(&self, pos: usize)->Option<usize>{
+        self.statements.get(&pos).cloned()
     }
 
     /// get all statement vm code offsets
@@ -437,6 +437,12 @@ pub struct Compiler<'a>{
     errors: Vec<Error<'a>>
 }
 
+
+impl<'a> Default for Compiler<'a>{
+    fn default()->Self{
+        Self::new()
+    }
+}
 
 impl<'a> Compiler<'a>{
     /// creates new instance of compiler
@@ -476,11 +482,8 @@ impl<'a> Compiler<'a>{
         }
         // compile all functions
         for t in tree{
-            match t{
-                Root::FunctionDefinition(def) => {
-                    let _ = self.compile_function(def);
-                },
-                _ => {}
+            if let Root::FunctionDefinition(def) = t{
+                let _ = self.compile_function(def);
             }
         }
         if self.errors.is_empty(){
@@ -565,8 +568,7 @@ impl<'a> Compiler<'a>{
             },
             Statement::VariableDefinition(v) => {
                 self.debug_info.reg_statement_offset(statement, self.operations.len());
-                let res = self.compile_variable_definition(&v);
-                res
+                self.compile_variable_definition(&v)
             },
             Statement::ForLoop(l) => self.compile_for_loop(&l, statement),
             Statement::Condition(c) => {
@@ -581,7 +583,7 @@ impl<'a> Compiler<'a>{
             self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_TYPE, e.first_token()));
             Err(e)
         }).ok()?;
-        self.compile_expression_of_type(ret, required_type)?;
+        self.compile_expression_of_type(ret, &required_type)?;
         let id = self.take_latest_expr();
         self.operations.push(Operation{
             value: None,
@@ -602,7 +604,7 @@ impl<'a> Compiler<'a>{
             Err(e)
         }).ok()?;
         let variable_address = self.variables.register_variable(&var.variable.name, required_type.clone()).ok()?;
-        let _type_ = self.compile_expression_of_type(&var.set_to, required_type)?;
+        self.compile_expression_of_type(&var.set_to, &required_type)?;
         self.debug_info.push_variable(var.name(), variable_address, self.operations.len());
         let from = self.take_latest_expr();
         match variable_address{
@@ -634,7 +636,7 @@ impl<'a> Compiler<'a>{
         let loop_start = self.operations.len();
         // for loop has breakpoint at condition check
         self.debug_info.reg_statement_offset(statement, self.operations.len());
-        let succ = succ.and(self.compile_expression_of_type(&for_loop.condition, Type::int()));
+        let succ = succ.and(self.compile_expression_of_type(&for_loop.condition, &Type::int()));
         let jump_op = self.operations.len();
         let id = self.take_latest_expr();
         self.operations.push(Operation {
@@ -643,7 +645,7 @@ impl<'a> Compiler<'a>{
             args: vec![0, id]
         });
         let succ = succ.and(self.compile_block(&for_loop.body));
-        let succ = succ.and(self.compile_expression_of_type(&for_loop.step, Type::int()));
+        let succ = succ.and(self.compile_expression_of_type(&for_loop.step, &Type::int()));
         self.take_latest_expr();
         self.operations.push(Operation{
             value: None,
@@ -657,7 +659,7 @@ impl<'a> Compiler<'a>{
     }
 
     fn compile_condition(&mut self, cond: &'a Condition<'a>)->Option<()>{
-        let mut succ = self.compile_expression_of_type(&cond.condition, Type::int());
+        let mut succ = self.compile_expression_of_type(&cond.condition, &Type::int());
         let jump_op = self.operations.len();
         let id = self.take_latest_expr();
         self.operations.push(Operation{
@@ -810,14 +812,14 @@ impl<'a> Compiler<'a>{
 
     fn compile_expression_constant(&mut self, c: &'a TokenData<'a>)->Option<(Type, bool)>{
         let id = self.put_expr();
-        if let Some(i) = c.token_str().parse::<i32>().ok(){
+        if let Ok(i) = c.token_str().parse::<i32>(){
             self.operations.push(Operation{
                 code: Code::ConstInt,
                 args: vec![id],
                 value: Some(Value::Int(i))
             });
             Some((Type::int(), false))
-        }else if let Some(f) = c.token_str().parse::<f32>().ok(){
+        }else if let Ok(f) = c.token_str().parse::<f32>(){
             self.operations.push(Operation{
                 code: Code::ConstFloat,
                 args: vec![id],
@@ -855,7 +857,7 @@ impl<'a> Compiler<'a>{
     fn compile_expression_function_call(&mut self, func: &'a FunctionCall<'a>)->Option<(Type, bool)>{
         let type_ = self.compile_expression_rvalue(&func.func)?;
         let type_ = match type_{
-            Type{pointer_count:0, base: BaseType::Function(box func), final_: _} => {
+            Type{pointer_count:0, base: BaseType::Function(box func), ..} => {
                 func
             },
             _ => {
@@ -869,7 +871,7 @@ impl<'a> Compiler<'a>{
             let sp_offset = self.put_expr(); // reserve space for result
             let res = func.arguments.iter()
                 .zip(&type_.args)
-                .map(|(arg, type_)| self.compile_expression_of_type(arg, type_.clone()))
+                .map(|(arg, type_)| self.compile_expression_of_type(arg, &type_))
                 .fold(Some(()), |a, b| a.and(b));
             self.temp_values -= func.arguments.len();
             self.operations.push(Operation{
@@ -897,7 +899,7 @@ impl<'a> Compiler<'a>{
     fn compile_expression_binary_op(&mut self, operator: &'a BinaryOperator<'a>)->Option<(Type, bool)>{
         let op = operator.operator.token_str();
         if op == "||"{
-            self.compile_expression_of_type(&operator.left, Type::int())?;
+            self.compile_expression_of_type(&operator.left, &Type::int())?;
             let jump_id = self.operations.len();
             let id = self.take_latest_expr();
             self.operations.push(Operation {
@@ -905,11 +907,11 @@ impl<'a> Compiler<'a>{
                 code: Code::JumpNZ,
                 args: vec![0, id]
             });
-            self.compile_expression_of_type(&operator.right, Type::int())?;
+            self.compile_expression_of_type(&operator.right, &Type::int())?;
             self.operations[jump_id].args[0] = self.operations.len();
             Some((Type::int(), false))
         }else if op == "&&" {
-            self.compile_expression_of_type(&operator.left, Type::int())?;
+            self.compile_expression_of_type(&operator.left, &Type::int())?;
             let jump_id = self.operations.len();
             let id = self.take_latest_expr();
             self.operations.push(Operation {
@@ -917,13 +919,13 @@ impl<'a> Compiler<'a>{
                 code: Code::JumpZ,
                 args: vec![0, id]
             });
-            self.compile_expression_of_type(&operator.right, Type::int())?;
+            self.compile_expression_of_type(&operator.right, &Type::int())?;
             self.operations[jump_id].args[0] = self.operations.len();
             Some((Type::int(), false))
         }else if op == "="{
             let (type_, is_reference) = self.compile_expression(&operator.left)?;
             if is_reference && type_ != Type::void(){
-                let _right = self.compile_expression_of_type(&operator.right, type_.clone())?;
+                self.compile_expression_of_type(&operator.right, &type_)?;
                 let r = self.take_latest_expr();
                 let l = self.take_latest_expr();
                 self.operations.push(Operation{
@@ -940,17 +942,17 @@ impl<'a> Compiler<'a>{
             let left_type = self.compile_expression_rvalue(&operator.left)?;
             let right_type = self.compile_expression_rvalue(&operator.right)?;
             match op{
-                "+" => self.compile_operator_plus(operator.operator, left_type, right_type),
-                "-" => self.compile_operator_minus(operator.operator, left_type, right_type),
-                "*" => self.compile_operator_mul(operator.operator, left_type, right_type),
-                "/" => self.compile_operator_div(operator.operator, left_type, right_type),
-                "%" => self.compile_operator_mod(operator.operator, left_type, right_type),
-                "==" => self.compile_eq_operator(operator.operator, left_type, right_type),
-                "!=" => self.compile_not_eq_operator(operator.operator, left_type, right_type),
-                "<" => self.compile_less_operator(operator.operator, left_type, right_type),
-                ">" => self.compile_greater_operator(operator.operator, left_type, right_type),
-                "<=" => self.compile_less_or_eq_operator(operator.operator, left_type, right_type),
-                ">=" => self.compile_greater_or_eq_operator(operator.operator, left_type, right_type),
+                "+" => self.compile_operator_plus(operator.operator, &left_type, &right_type),
+                "-" => self.compile_operator_minus(operator.operator, &left_type, &right_type),
+                "*" => self.compile_operator_mul(operator.operator, &left_type, &right_type),
+                "/" => self.compile_operator_div(operator.operator, &left_type, &right_type),
+                "%" => self.compile_operator_mod(operator.operator, &left_type, &right_type),
+                "==" => self.compile_eq_operator(operator.operator, &left_type, &right_type),
+                "!=" => self.compile_not_eq_operator(operator.operator, &left_type, &right_type),
+                "<" => self.compile_less_operator(operator.operator, &left_type, &right_type),
+                ">" => self.compile_greater_operator(operator.operator, &left_type, &right_type),
+                "<=" => self.compile_less_or_eq_operator(operator.operator, &left_type, &right_type),
+                ">=" => self.compile_greater_or_eq_operator(operator.operator, &left_type, &right_type),
                 _ => {
                     self.errors.push(Error::from_token(ERROR_COMPILER_UNSUPPORTED_OPERATOR, operator.operator));
                     None
@@ -959,19 +961,12 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_less_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_less_operator(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l == Type::int() && r == Type::int(){
+        if Self::can_compare(l, r){
             self.operations.push(Operation{
-                value: None,
-                code: Code::Less,
-                args: vec![res, left, right]
-            });
-            Some((Type::int(), false))
-        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
-            self.operations.push(Operation {
                 value: None,
                 code: Code::Less,
                 args: vec![res, left, right]
@@ -983,19 +978,12 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_greater_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_greater_operator(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l == Type::int() && r == Type::int(){
+        if Self::can_compare(l, r){
             self.operations.push(Operation{
-                value: None,
-                code: Code::Less,
-                args: vec![res, right, left]
-            });
-            Some((Type::int(), false))
-        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
-            self.operations.push(Operation {
                 value: None,
                 code: Code::Less,
                 args: vec![res, right, left]
@@ -1007,19 +995,12 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_less_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_less_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l == Type::int() && r == Type::int(){
+        if Self::can_compare(l, r){
             self.operations.push(Operation{
-                value: None,
-                code: Code::LessOrEq,
-                args: vec![res, left, right]
-            });
-            Some((Type::int(), false))
-        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
-            self.operations.push(Operation {
                 value: None,
                 code: Code::LessOrEq,
                 args: vec![res, left, right]
@@ -1031,19 +1012,12 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_greater_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_greater_or_eq_operator(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l == Type::int() && r == Type::int(){
+        if Self::can_compare(l, r){
             self.operations.push(Operation{
-                value: None,
-                code: Code::LessOrEq,
-                args: vec![res, right, left]
-            });
-            Some((Type::int(), false))
-        }else if l.autocast(&Type::float()) && r.autocast(&Type::float()){
-            self.operations.push(Operation {
                 value: None,
                 code: Code::LessOrEq,
                 args: vec![res, right, left]
@@ -1055,7 +1029,12 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn can_compare(l: &Type, r: &Type)->bool{
+        (l == &Type::int() && r == &Type::int())
+            || (l.autocast(&Type::float()) && r.autocast(&Type::float()))
+    }
+
+    fn compile_eq_operator(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
@@ -1065,14 +1044,14 @@ impl<'a> Compiler<'a>{
                 code: Code::Eq,
                 args: vec![res, left, right]
             });
-            Some((l, false))
+            Some((Type::int(), false))
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
             None
         }
     }
 
-    fn compile_not_eq_operator(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_not_eq_operator(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
@@ -1082,32 +1061,32 @@ impl<'a> Compiler<'a>{
                 code: Code::NotEq,
                 args: vec![res, left, right]
             });
-            Some((l, false))
+            Some((Type::int(), false))
         }else{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
             None
         }
     }
 
-    fn compile_operator_plus(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_operator_plus(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l.pointer_count > 0 && r == Type::int() {
+        if l.pointer_count > 0 && r == &Type::int() {
             self.operations.push(Operation {
                 value: None,
                 code: Code::Sum,
                 args: vec![res, left, right]
             });
             Some((l.clone(), false))
-        }else if l == Type::int() && r.pointer_count > 0 {
+        }else if l == &Type::int() && r.pointer_count > 0 {
             self.operations.push(Operation {
                 value: None,
                 code: Code::Sum,
                 args: vec![res, left, right]
             });
             Some((r.clone(), false))
-        }else if l == Type::int() && r == Type::int(){
+        }else if l == &Type::int() && r == &Type::int(){
             self.operations.push(Operation {
                 value: None,
                 code: Code::Sum,
@@ -1127,25 +1106,20 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_operator_minus(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_operator_minus(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l.pointer_count > 0 && r == Type::int() {
+        if l.pointer_count > 0 && r == &Type::int() {
             self.operations.push(Operation {
                 value: None,
                 code: Code::Diff,
                 args: vec![res, left, right]
             });
             Some((l.clone(), false))
-        }else if l.pointer_count > 0 && l == r {
-            self.operations.push(Operation {
-                value: None,
-                code: Code::Diff,
-                args: vec![res, left, right]
-            });
-            Some((Type::int(), false))
-        }else if l == Type::int() && r == Type::int(){
+        }else if (l.pointer_count > 0 && l == r)
+            || (l == &Type::int() && r == &Type::int())
+        {
             self.operations.push(Operation {
                 value: None,
                 code: Code::Diff,
@@ -1165,11 +1139,11 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_operator_mul(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_operator_mul(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l == Type::int() && r == Type::int(){
+        if l == &Type::int() && r == &Type::int(){
             self.operations.push(Operation {
                 value: None,
                 code: Code::Mul,
@@ -1189,11 +1163,11 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_operator_div(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_operator_div(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l == Type::int() && r == Type::int(){
+        if l == &Type::int() && r == &Type::int(){
             self.operations.push(Operation {
                 value: None,
                 code: Code::DivI,
@@ -1213,11 +1187,11 @@ impl<'a> Compiler<'a>{
         }
     }
 
-    fn compile_operator_mod(&mut self, token: &'a TokenData<'a>, l: Type, r: Type)->Option<(Type, bool)>{
+    fn compile_operator_mod(&mut self, token: &'a TokenData<'a>, l: &Type, r: &Type)->Option<(Type, bool)>{
         let right = self.take_latest_expr();
         let left = self.take_latest_expr();
         let res = self.put_expr();
-        if l == Type::int() && r == Type::int(){
+        if l == &Type::int() && r == &Type::int(){
             self.operations.push(Operation {
                 value: None,
                 code: Code::Mod,
@@ -1244,22 +1218,18 @@ impl<'a> Compiler<'a>{
         Some(type_)
     }
 
-    fn compile_expression_of_type(&mut self, expr: &'a Expression<'a>, required_type: Type)->Option<()>{
+    fn compile_expression_of_type(&mut self, expr: &'a Expression<'a>, required_type: &Type)->Option<()>{
         let type_ = self.compile_expression_rvalue(expr)?;
         let id = self.take_latest_expr();
-        self.compile_convert_type(expr.token(), type_, required_type, id)?;
+        self.compile_convert_type(expr.token(), &type_, &required_type, id)?;
         self.put_expr();
         Some(())
     }
 
-    fn compile_convert_type(&mut self, token: &'a TokenData<'a>, from: Type, into: Type, _id: usize)->Option<()>{
-        if from == into{
+    fn compile_convert_type(&mut self, token: &'a TokenData<'a>, from: &Type, into: &Type, _id: usize)->Option<()>{
+        if Self::is_convertion_free(&from, &into){
             Some(())
-        }else if from.pointer_count>0 && into == Type::int(){
-            Some(())
-        }else if from.autocast(&into){
-            Some(())
-        }else if from == Type::float() && into == Type::int(){
+        }else if from == &Type::float() && into == &Type::int(){
             let id1 = self.take_latest_expr();
             self.operations.push(Operation{
                 value: None,
@@ -1271,6 +1241,12 @@ impl<'a> Compiler<'a>{
             self.errors.push(Error::from_token(ERROR_COMPILER_MISMATCHED_TYPES, token));
             None
         }
+    }
+
+    fn is_convertion_free(from: &Type, into: &Type)->bool{
+        from == into
+            || from.pointer_count>0 && into == &Type::int()
+            || from.autocast(into)
     }
 
     fn put_expr(&mut self)->usize{
