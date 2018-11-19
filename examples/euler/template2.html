@@ -50,6 +50,10 @@
             Plotly.plot(graph, [graph_data], {{margin: {{t: 0}} }});
 
             vm.on_break = function(){{
+                // if breakpoint encountered before any data supplied
+                if(graph_data.y == null){{
+                    return;
+                }}
                 // update grapth
                 var x = [];
                 var STEP = 0.01;
