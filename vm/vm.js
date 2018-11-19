@@ -9,23 +9,49 @@ function VM(code, functions, function_links){
     this.break_on_return = false;
     this.data = [];
     this.return_stack = [];
+
+    this.allocated = [];
+    this.max_stack_size = 10000;
     
     this.is_running = false;
 
     var self = this;
+
+    this.on_break = function(){}
 
     for(var i=0; i<functions.length; ++i){
         this.call_functions[functions[i][0]] = functions[i]
         this.functions[i] = functions[i]
     }
     for(var i=0; i<function_links.length; ++i){
+        if(function_links[i][1] === "vm.alloc"){
+            function_links[i][1] = function(size){
+                console.log("vm.alloc")
+                return self.allocate(size);
+            }
+        }
         this.call_functions[function_links[i][0]] = function_links[i]
+    }
+
+    this.allocate = function(size){
+        var pointer = this.allocated.length;
+        return pointer + this.max_stack_size;
+    }
+
+    this.get_array = function(pointer, size){
+        if(pointer < this.max_stack_size){
+            return this.data.slice(pointer, pointer+size);
+        }else{
+            pointer -= this.max_stack_size;
+            return this.allocated.slice(pointer, pointer+size);
+        }
     }
 
     this.run = function(){
         if(this.is_running === false){
             this.is_running = true;
             if(this.breakpoints.includes(0)){
+                this.on_break();
                 return;
             }
         }
@@ -33,7 +59,8 @@ function VM(code, functions, function_links){
             var command = this.code[this.ip];
             var command_id = command[0];
             var res = this.operations[command_id](command);
-            if(res !== undefined){
+            if(res !== undefined || this.is_running === false){
+                this.on_break();
                 this.reset();
                 return res;
             }
@@ -41,6 +68,7 @@ function VM(code, functions, function_links){
                 break;
             }
         }
+        this.on_break();
     }
 
     this.step = function(statements){
@@ -55,8 +83,9 @@ function VM(code, functions, function_links){
             var command = this.code[this.ip];
             var command_id = command[0];
             var res = this.operations[command_id](command);
-            if(res !== undefined){
+            if(res !== undefined || this.is_running === false){
                 this.reset();
+                this.on_break();
                 return res;
             }
             if(this.return_stack.length == depth && statements.includes(this.ip)){
@@ -74,6 +103,7 @@ function VM(code, functions, function_links){
                 break;
             }
         }
+        this.on_break();
     };
 
     this.current_function_range = function(){
@@ -92,6 +122,7 @@ function VM(code, functions, function_links){
     this.reset = function(){
         this.ip = 0;
         this.data = [];
+        this.allocated = [];
         this.is_running = false;
     }
 
@@ -152,7 +183,7 @@ function VM(code, functions, function_links){
     // sum
     this.operation_names[7] = "SUM";
     this.operations[7] = function(args){
-        self.data[args[1]] = self.data[args[2]] + self.data[args[3]];
+        self.data[self.sp + args[1]] = self.data[self.sp + args[2]] + self.data[self.sp + args[3]];
         self.ip++;
     }
     // diff
@@ -197,14 +228,24 @@ function VM(code, functions, function_links){
     this.operation_names[14] = "PTR_GET";
     this.operations[14] = function(args){
         var pointer = self.data[self.sp + args[2]];
-        self.data[self.sp + args[1]] = self.data[pointer];
+        if(pointer < self.max_stack_size){
+            self.data[self.sp + args[1]] = self.data[pointer];
+        }else{
+            pointer -= self.max_stack_size;
+            self.data[self.sp + args[1]] = self.allocated[pointer];
+        }
         self.ip++;
     }
     // pointer set
     this.operation_names[15] = "PTR_SET";
     this.operations[15] = function(args){
         var pointer = self.data[self.sp + args[1]];
-        self.data[pointer] = self.data[self.sp + args[2]];
+        if(pointer < self.max_stack_size){
+            self.data[pointer] = self.data[self.sp + args[2]];
+        }else{
+            pointer -= self.max_stack_size;
+            self.allocated[pointer] = self.data[self.sp + args[2]];
+        }
         self.ip++;
     }
     // Nop
@@ -242,6 +283,7 @@ function VM(code, functions, function_links){
         if(self.return_stack.length > 0){
             self.ip = self.return_stack.pop() + 1;
         }else{
+            self.is_running = false;
             return self.data[self.sp];
         }
     }
