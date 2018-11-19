@@ -138,7 +138,7 @@ fn main() {
     let res = strfmt(&template, &vars).unwrap();
 
     let mut out = File::create(output).unwrap();
-    write!(out, "{}", res);
+    write!(out, "{}", res).unwrap();
     out.sync_all().unwrap();
 }
 

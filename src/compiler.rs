@@ -1287,3 +1287,5 @@ impl<'a> Compiler<'a>{
         self.temp_values + self.variables.locals_len()
     }
 }
+
+
