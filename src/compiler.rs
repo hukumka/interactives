@@ -524,7 +524,6 @@ impl<'a> Compiler<'a> {
                         ERROR_COMPILER_UNSUPPORTED_TYPE,
                         e.first_token(),
                     ));
-                    ()
                 })?;
                 match self.variables.register_variable(v.name, type_) {
                     Ok(x) => {

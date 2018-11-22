@@ -1278,7 +1278,7 @@ mod tests {
             Root::FunctionDefinition(v) => v,
             _ => panic!("Expected function definition"),
         };
-        let type_ = &fn_def.decl.ret_name.type_;
+        let _type = &fn_def.decl.ret_name.type_;
         let type_ = &var_def.variable.type_;
         assert_eq!(type_to_str(&type_.base), Some("int"));
         assert_eq!(type_.pointer_count, 0);
