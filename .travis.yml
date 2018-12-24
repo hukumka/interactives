@@ -3,6 +3,7 @@ cache: cargo
 rust:
   - nightly
 before_script:
+  - rustup update
   - rustup component add clippy
   - rustup component add rustfmt
 script:
