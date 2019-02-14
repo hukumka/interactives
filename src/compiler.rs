@@ -564,14 +564,12 @@ impl<'a> Compiler<'a> {
 
     fn compile_block(&mut self, block: &'a Block<'a>) -> Option<()> {
         let stack_frame = self.debug_info.make_stack_floor();
-        let res = block
-            .statements
-            .iter()
-            .map(|s| self.compile_statement(s))
-            .fold(Some(()), |a, b| a.and(b));
+        for s in &block.statements{
+            self.compile_statement(s)?;
+        }
         self.debug_info
             .recover_to_stack_floor(self.operations.len(), stack_frame);
-        res
+        Some(())
     }
 
     fn compile_statement(&mut self, statement: &'a Statement<'a>) -> Option<()> {

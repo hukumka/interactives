@@ -11,8 +11,12 @@ function initialize_vm_interface(functions){
             }
         };
     }
-    var function_links = compiled.function_links.map(x => [x[0], functions[x[1]].func, functions[x[1]].arg_count]);
-
+    var function_links = compiled.function_links.map(x => {
+        if(functions[x[1]] === undefined){
+            throw "No function with name \"" + x[1] + "\". Maybe it it should be added to template?"
+        }
+        [x[0], functions[x[1]].func, functions[x[1]].arg_count]}
+    );
 
     function PersistentStack(parent, value){
         this.parent = parent

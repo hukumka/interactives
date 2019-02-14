@@ -6,8 +6,13 @@
 
     <link type="text/css" rel="stylesheet" href="vm/page.css">
     <script src="vm/vm.js"></script>
-    <script>{code_js}</script>
-    <script src="vm/interface.js">
+    <script>{{code_js}}</script>
+    <script src="vm/interface.js"></script>
+    <script>
+        window.onload = function(){
+            functions = []
+            initialize_vm_interface(functions)
+        }
     </script>
 </head>
 <body>
@@ -22,7 +27,7 @@
             <div id="variables"></div>
         </div>
         <div class="code">
-            {code_html}
+            {{code_html}}
         </div>
         <div id="asm_code">
         </div>
