@@ -30,7 +30,11 @@
         }}
 
         // initialize debugger interface
-        initialize_vm_interface(functions);
+        function on_load(){{
+            initialize_vm_interface(functions);
+        }}
+
+        window.onload = on_load
     </script>
 </head>
 <body>
@@ -47,8 +51,8 @@
         <div class="code">
             {code_html}
         </div>
-        <div id="asm_code">
-        </div>
     </div>
+        <div id="graph">
+        </div>
 </body>
 </html>

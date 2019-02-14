@@ -5,7 +5,7 @@
     <title>html page</title>
 
     <link type="text/css" rel="stylesheet" href="vm/page.css">
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="vm/plotly-latest.min.js"></script>
     <script src="vm/vm.js"></script>
     <script>{code_js}</script>
     <script src="vm/interface.js"></script>
@@ -51,6 +51,9 @@
 
             vm.on_break = function(){{
                 // update grapth
+                if(graph_data.y === null){{
+                    return;
+                }}
                 var x = [];
                 var STEP = 0.01;
                 for(var i=0; i<graph_data.y.length; ++i){{

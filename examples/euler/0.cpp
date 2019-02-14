@@ -1,5 +1,3 @@
-void display(float* x, int size);
-
 float sqrt(float x);
 float* alloc_float(int size);
 
@@ -11,7 +9,6 @@ int main(){
     data[0] = 1.0;
     for(int i=1; i<SIZE; ++i){
         data[i] = step_func(data[i-1], step);
-        display(data, SIZE);
     }
 }
 
