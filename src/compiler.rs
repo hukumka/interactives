@@ -282,6 +282,7 @@ pub struct DebugInfo {
     functions: Vec<(usize, usize)>,
     /// function links. Contains pairs (function_id, function_name, arg_count)
     function_links: Vec<(usize, String)>,
+    main_id: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -309,7 +310,18 @@ impl DebugInfo {
             variables_transactions_stack: vec![],
             functions: vec![],
             function_links: vec![],
+            main_id: None,
         }
+    }
+
+    pub fn start(&self) -> usize{
+        let id = self.main_id.expect("Error: no main function present!");
+        for f in &self.functions{
+            if f.0 == id{
+                return f.1;
+            }
+        }
+        panic!("Main staring point not found!");
     }
 
     /// get list of entry points for all registered functions.
@@ -469,8 +481,15 @@ impl<'a> Compiler<'a> {
         for t in tree {
             match t {
                 Root::FunctionDefinition(def) => {
-                    if let Err(e) = self.variables.register_function_definition(def) {
-                        self.errors.push(e);
+                    match self.variables.register_function_definition(def) {
+                        Ok(id) => {
+                            if def.decl.ret_name.name.token_str() == "main"{
+                                self.debug_info.main_id = Some(id);
+                            }
+                        },
+                        Err(e) => {
+                            self.errors.push(e);
+                        }
                     }
                 }
                 Root::FunctionDeclaration(decl) => {
@@ -488,7 +507,6 @@ impl<'a> Compiler<'a> {
                 _ => {}
             }
         }
-        // compile all functions
         for t in tree {
             if let Root::FunctionDefinition(def) = t {
                 let _ = self.compile_function(def);
@@ -500,6 +518,7 @@ impl<'a> Compiler<'a> {
             Err(self.errors)
         }
     }
+    
 
     /// compile single function
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>) -> Option<usize> {

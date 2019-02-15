@@ -161,7 +161,7 @@ fn write_compiled_to_js<T: Write>(
     code: &[Operation],
     debug_info: &DebugInfo,
 ) -> std::fmt::Result {
-    write!(writer, "var compiled = {{commands: [")?;
+    write!(writer, "var compiled = {{start: {}, commands: [", debug_info.start())?;
     let mut iter = code.iter();
     if let Some(op) = iter.next() {
         write_operation_to_js(writer, op)?;

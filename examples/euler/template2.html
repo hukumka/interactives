@@ -5,7 +5,6 @@
     <title>html page</title>
 
     <link type="text/css" rel="stylesheet" href="vm/page.css">
-    <script src="vm/plotly-latest.min.js"></script>
     <script src="vm/vm.js"></script>
     <script>{{code_js}}</script>
     <script src="vm/interface.js"></script>
@@ -40,9 +39,7 @@
                 // due to reaching end of program
             }
         }
-
         // initialize debugger interface
-
         var prev_load = window.onload;
         window.onload = function(){
             vm = initialize_vm_interface(functions);
@@ -67,9 +64,8 @@
                 Plotly.redraw(graph);
             }
         }
-
-
     </script>
+    <script src="vm/plotly-latest.min.js" async></script>
 </head>
 <body>
     <div class="popups">

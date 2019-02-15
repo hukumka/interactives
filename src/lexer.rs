@@ -75,7 +75,7 @@ pub struct TokenData<'a> {
 
 impl<'a> TokenData<'a> {
     /// Returns `TokenData` instance
-    fn new(text: &'a str, interval: (usize, usize), type_: TokenType) -> Self {
+    pub fn new(text: &'a str, interval: (usize, usize), type_: TokenType) -> Self {
         Self {
             text,
             interval,
