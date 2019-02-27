@@ -1027,6 +1027,40 @@ impl<'a> Compiler<'a> {
                 ));
                 None
             }
+        } else if let &[a, b'='] = op.as_bytes() {
+            let (type_, is_reference) = self.compile_expression(&operator.left)?;
+            if is_reference && type_ != Type::void() {
+                self.compile_expression_rvalue(&operator.left)?;
+                self.compile_expression_of_type(&operator.right, &type_)?;
+                match a {
+                    b'+' => self.compile_operator_plus(operator.operator, &type_, &type_),
+                    b'-' => self.compile_operator_minus(operator.operator, &type_, &type_),
+                    b'*' => self.compile_operator_mul(operator.operator, &type_, &type_),
+                    b'/' => self.compile_operator_div(operator.operator, &type_, &type_),
+                    b'%' => self.compile_operator_mod(operator.operator, &type_, &type_),
+                    _ => {
+                        self.errors.push(Error::from_token(
+                            ERROR_COMPILER_UNSUPPORTED_OPERATOR,
+                            operator.operator,
+                        ));
+                        None
+                    }
+                }?;
+                let r = self.take_latest_expr();
+                let l = self.take_latest_expr();
+                self.operations.push(Operation {
+                    value: None,
+                    code: Code::PointerSet,
+                    args: vec![l, r],
+                });
+                Some((type_, true))
+            } else {
+                self.errors.push(Error::from_token(
+                    ERROR_COMPILER_MISMATCHED_TYPES,
+                    operator.operator,
+                ));
+                None
+            }
         } else {
             let left_type = self.compile_expression_rvalue(&operator.left)?;
             let right_type = self.compile_expression_rvalue(&operator.right)?;

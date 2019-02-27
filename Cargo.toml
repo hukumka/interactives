@@ -5,8 +5,8 @@ authors = ["Pavel Arnold <hukumka212@gmail.com>"]
 
 [dependencies]
 log = "0.4.0"
-env_logger = "0.5.10"
+env_logger = "0.6"
 lazy_static = "1.0"
 hamt-rs = "0.3.0"
-clap = "2.31.2"
+clap = "2.32"
 strfmt = "0.1.6"
