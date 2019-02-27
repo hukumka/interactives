@@ -11,8 +11,13 @@ function initialize_vm_interface(functions){
             }
         };
     }
-    var function_links = compiled.function_links.map(x => [x[0], functions[x[1]].func, functions[x[1]].arg_count]);
-
+    var function_links = compiled.function_links.map(x => {
+        if(functions[x[1]] === undefined){
+            throw "No function with name \"" + x[1] + "\". Maybe it it should be added to template?"
+        }
+        return [x[0], functions[x[1]].func, functions[x[1]].arg_count];
+    });
+    console.log(function_links)
 
     function PersistentStack(parent, value){
         this.parent = parent
@@ -42,8 +47,7 @@ function initialize_vm_interface(functions){
     }
 
 
-    vm = new VM(compiled.commands, compiled.function_enters, function_links)
-
+    vm = new VM(compiled.start, compiled.commands, compiled.function_enters, function_links)
 
     function VariableManager(transactions){
         this.transactions = transactions;
@@ -52,7 +56,7 @@ function initialize_vm_interface(functions){
         var stack = new PersistentStack()
         var transaction_id = 0
         for(var i=0; i<vm.code.length; ++i){
-            while(compiled.variable_transactions[transaction_id].pos == i){
+            while(transaction_id < compiled.variable_transactions.length && compiled.variable_transactions[transaction_id].pos == i){
                 var t = compiled.variable_transactions[transaction_id]
                 if(t.add){
                     stack = stack.push(t)

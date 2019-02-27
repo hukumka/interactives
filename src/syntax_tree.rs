@@ -1,7 +1,7 @@
 use bracket_tree::BracketTreeWalker;
 use error::syntax_tree_parser::*;
 use error::Error;
-use lexer::TokenData;
+use lexer::{TokenData, TokenType};
 
 #[derive(Debug)]
 pub enum Root<'a> {
@@ -282,6 +282,40 @@ impl<'a> FunctionDefinition<'a> {
                     | error_stream << ERROR_PARSING_FUNC_ARGS_EXPECT_COMA
             )?;
         }
+    }
+
+    pub fn _start() -> &'static FunctionDefinition<'static>{
+        lazy_static!{
+            static ref NAME_TOKEN: TokenData<'static> = TokenData::new("_start", (0, 6), TokenType::Name);
+            static ref TYPE_TOKEN: TokenData<'static> = TokenData::new("void", (0, 4), TokenType::Name);
+            static ref CALL_TOKEN: TokenData<'static> = TokenData::new("main", (0, 4), TokenType::Name);
+
+            static ref _START: FunctionDefinition<'static> = {
+                let decl = FunctionDeclaration{
+                    ret_name: Variable{
+                        type_: Type{
+                            base: TypeBase::Base(&TYPE_TOKEN),
+                            pointer_count: 0
+                        },
+                        name: &NAME_TOKEN,
+                    },
+                    arguments: vec![],
+                };
+                let call = FunctionCall{
+                    func: Expression(Box::new(ExpressionData::Variable(&CALL_TOKEN))),
+                    arguments: vec![]
+                };
+                let call = Expression(Box::new(ExpressionData::FunctionCall(call)));
+                let block = Block{
+                    statements: vec![Statement::Expression(call)]
+                };
+                FunctionDefinition{
+                    decl,
+                    body: block
+                }
+            };
+        }
+        &_START
     }
 }
 

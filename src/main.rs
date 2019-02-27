@@ -8,7 +8,6 @@ extern crate env_logger;
 #[macro_use]
 extern crate lazy_static;
 extern crate clap;
-extern crate strfmt;
 extern crate test;
 
 pub mod bracket_tree;
@@ -27,8 +26,6 @@ use std::io::Read;
 use std::io::Write as IOWrite;
 
 use clap::{App, Arg};
-
-use strfmt::strfmt;
 
 use bracket_tree::BracketTree;
 use compiler::{Compiler, DebugInfo, Operation, Value};
@@ -130,10 +127,13 @@ fn main() {
     let mut vars = HashMap::new();
     vars.insert(
         "code_html".to_string(),
-        page_string(&syntax_tree, &debug_info),
+        handlebars::no_escape(&page_string(&syntax_tree, &debug_info)),
     );
-    vars.insert("code_js".to_string(), js_string(&code, &debug_info));
-    let res = strfmt(&template, &vars).unwrap();
+    vars.insert("code_js".to_string(), handlebars::no_escape(&js_string(&code, &debug_info)));
+
+    let mut handlebars = handlebars::Handlebars::new();
+    handlebars.register_escape_fn(handlebars::no_escape);
+    let res = handlebars.render_template(&template, &vars).unwrap();
 
     let mut out = File::create(output).unwrap();
     write!(out, "{}", res).unwrap();
@@ -161,7 +161,7 @@ fn write_compiled_to_js<T: Write>(
     code: &[Operation],
     debug_info: &DebugInfo,
 ) -> std::fmt::Result {
-    write!(writer, "var compiled = {{commands: [")?;
+    write!(writer, "var compiled = {{start: {}, commands: [", debug_info.start())?;
     let mut iter = code.iter();
     if let Some(op) = iter.next() {
         write_operation_to_js(writer, op)?;

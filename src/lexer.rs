@@ -75,7 +75,7 @@ pub struct TokenData<'a> {
 
 impl<'a> TokenData<'a> {
     /// Returns `TokenData` instance
-    fn new(text: &'a str, interval: (usize, usize), type_: TokenType) -> Self {
+    pub fn new(text: &'a str, interval: (usize, usize), type_: TokenType) -> Self {
         Self {
             text,
             interval,
@@ -169,7 +169,7 @@ impl<'a> Preprocessor<'a> {
                     self.eat_numeric(char_iter)
                 } else if f == '"' {
                     self.eat_string(char_iter)
-                } else if f == ' ' || f == '\n' || f == '\r' {
+                } else if f.is_whitespace() {
                     char_iter.next().unwrap();
                     continue;
                 } else if is_bracket(f) {

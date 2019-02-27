@@ -1,6 +1,6 @@
-function VM(code, functions, function_links){
+function VM(start, code, functions, function_links){
     this.sp = 0;
-    this.ip = 0;
+    this.ip = start;
     this.code = code;
     this.functions = [];
     this.call_functions = [];
@@ -120,7 +120,7 @@ function VM(code, functions, function_links){
     }
 
     this.reset = function(){
-        this.ip = 0;
+        this.ip = start;
         this.data = [];
         this.allocated = [];
         this.is_running = false;

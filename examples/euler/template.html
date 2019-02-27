@@ -6,25 +6,35 @@
 
     <link type="text/css" rel="stylesheet" href="vm/page.css">
     <script src="vm/vm.js"></script>
-    <script>{code_js}</script>
+    <script>{{code_js}}</script>
     <script src="vm/interface.js">
     </script>
     <script>
         // create virtual machine instance
         var functions = []
-        functions['sqrt'] = {{
+        functions['sqrt'] = {
             arg_count: 1,
-            func: function(x){{
+            func: function(x){
                 return Math.sqrt(x)
-            }}
-        }}
-        functions['alloc_float'] = {{
+            }
+        }
+        functions['alloc_float'] = {
             arg_count: 1,
             func: "vm.alloc"
-        }}
+        }
+        functions['display'] = {
+            arg_count: 2,
+            func: function(pointer, size){
+                
+            }
+        }
 
         // initialize debugger interface
-        initialize_vm_interface(functions);
+        function on_load(){
+            initialize_vm_interface(functions);
+        }
+
+        window.onload = on_load
     </script>
 </head>
 <body>
@@ -39,10 +49,10 @@
             <div id="variables"></div>
         </div>
         <div class="code">
-            {code_html}
-        </div>
-        <div id="asm_code">
+            {{code_html}}
         </div>
     </div>
+        <div id="graph">
+        </div>
 </body>
 </html>

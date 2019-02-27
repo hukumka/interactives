@@ -5,32 +5,31 @@
     <title>html page</title>
 
     <link type="text/css" rel="stylesheet" href="vm/page.css">
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="vm/vm.js"></script>
-    <script>{code_js}</script>
+    <script>{{code_js}}</script>
     <script src="vm/interface.js"></script>
     <script>
         var graph = null;
-        var graph_data = {{
+        var graph_data = {
             x: null,
             y: null
-        }}
+        }
         var vm = null;
         // create virtual machine instance
         var functions = []
-        functions['sqrt'] = {{
+        functions['sqrt'] = {
             arg_count: 1,
-            func: function(x){{
+            func: function(x){
                 return Math.sqrt(x)
-            }}
-        }}
-        functions['alloc_float'] = {{
+            }
+        }
+        functions['alloc_float'] = {
             arg_count: 1,
             func: "vm.alloc"
-        }}
-        functions['display'] = {{
+        }
+        functions['display'] = {
             arg_count: 2,
-            func: function(pointer, size){{
+            func: function(pointer, size){
                 var y = vm.get_array(pointer, size);
                 graph_data.y = y;
                 // you dont want to actually redraw graph each iteration
@@ -38,35 +37,35 @@
                 // instead you use VM on_break hook to redraw only then
                 // VM pauses execution due to breakpoint or exit execution
                 // due to reaching end of program
-            }}
-        }}
-
+            }
+        }
         // initialize debugger interface
-
         var prev_load = window.onload;
-        window.onload = function(){{
+        window.onload = function(){
             vm = initialize_vm_interface(functions);
             graph = document.getElementById('graph');
-            Plotly.plot(graph, [graph_data], {{margin: {{t: 0}} }});
+            Plotly.plot(graph, [graph_data], {margin: {t: 0} });
 
-            vm.on_break = function(){{
+            vm.on_break = function(){
                 // if breakpoint encountered before any data supplied
-                if(graph_data.y == null){{
+                if(graph_data.y == null){
                     return;
-                }}
+                }
                 // update grapth
+                if(graph_data.y === null){
+                    return;
+                }
                 var x = [];
                 var STEP = 0.01;
-                for(var i=0; i<graph_data.y.length; ++i){{
+                for(var i=0; i<graph_data.y.length; ++i){
                     x.push(i*STEP);
-                }}
+                }
                 graph_data.x = x;
                 Plotly.redraw(graph);
-            }}
-        }}
-
-
+            }
+        }
     </script>
+    <script src="vm/plotly-latest.min.js" async></script>
 </head>
 <body>
     <div class="popups">
@@ -80,7 +79,7 @@
             <div id="variables"></div>
         </div>
         <div class="code">
-            {code_html}
+            {{code_html}}
         </div>
         <div id="graph">
         </div>
