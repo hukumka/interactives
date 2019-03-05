@@ -357,7 +357,9 @@ pub fn need_brackets_right<'a>(op: &'a TokenData<'a>, expr: &'a Expression<'a>) 
 }
 pub fn need_brackets_left<'a>(expr: &'a Expression<'a>, op: &'a TokenData<'a>) -> bool {
     match expr.0.as_ref() {
-        ExpressionData::BinaryOperator(op2) => Expression::is_precede(op2.operator, op),
+        ExpressionData::BinaryOperator(op2) => {
+            Expression::is_precede(op, op2.operator)
+        },
         _ => false,
     }
 }

@@ -18,23 +18,18 @@
                 return Math.sqrt(x)
             }
         }
-        functions['alloc_float'] = {
+        functions['allocate_float'] = {
             arg_count: 1,
             func: "vm.alloc"
         }
-        functions['display'] = {
-            arg_count: 2,
-            func: function(pointer, size){
-                
-            }
-        }
+
+        vm = null;
 
         // initialize debugger interface
-        function on_load(){
-            initialize_vm_interface(functions);
+        window.onload = function(){
+            vm = initialize_vm_interface(functions);
         }
 
-        window.onload = on_load
     </script>
 </head>
 <body>
