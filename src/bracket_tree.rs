@@ -138,6 +138,7 @@ impl<'a> BracketTree<'a> {
             pos: 0,
             end: self.data.len(),
             tree: self,
+            attrs: vec![],
         }
     }
 }
@@ -147,6 +148,7 @@ impl<'a> BracketTree<'a> {
 pub struct BracketTreeWalker<'a> {
     pos: usize,
     end: usize,
+    pub attrs: Vec<String>,
     tree: &'a BracketTree<'a>,
 }
 
@@ -185,6 +187,7 @@ impl<'a> BracketTreeWalker<'a> {
             Some(BracketTreeWalker {
                 pos: pos + 1,
                 end,
+                attrs: vec![],
                 tree: self.tree,
             })
         } else {
@@ -252,15 +255,22 @@ impl<'a> BracketTreeWalker<'a> {
         type_: TokenType,
         checker: T,
     ) -> Option<&'a TokenData<'a>> {
-        if self.pos == self.end {
-            return None;
-        }
-        let token = &self.tree.data[self.pos];
-        if token.get_type() == type_ && checker(token.token_str()) {
-            self.pos += 1;
-            Some(token)
-        } else {
-            None
+        loop {
+            if self.pos == self.end {
+                return None;
+            }
+            let token = &self.tree.data[self.pos];
+            if token.get_type() == TokenType::Comment {
+                self.attrs.push(token.token_str().to_string());
+                self.pos += 1;
+                continue;
+            }
+            if token.get_type() == type_ && checker(token.token_str()) {
+                self.pos += 1;
+                return Some(token);
+            } else {
+                return None;
+            }
         }
     }
 

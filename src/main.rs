@@ -91,6 +91,9 @@ fn main() {
         err.err_print_message(&line_starts);
         panic!("Execution aborted due to present error.")
     });
+    for t in &tokens {
+        println!("{:?}", t);
+    }
     // build syntax tree
     println!("Parse into AST.");
     let bracket_tree = BracketTree::new(&tokens).unwrap_or_else(|err| {
@@ -129,7 +132,10 @@ fn main() {
         "code_html".to_string(),
         handlebars::no_escape(&page_string(&syntax_tree, &debug_info)),
     );
-    vars.insert("code_js".to_string(), handlebars::no_escape(&js_string(&code, &debug_info)));
+    vars.insert(
+        "code_js".to_string(),
+        handlebars::no_escape(&js_string(&code, &debug_info)),
+    );
 
     let mut handlebars = handlebars::Handlebars::new();
     handlebars.register_escape_fn(handlebars::no_escape);
@@ -161,7 +167,11 @@ fn write_compiled_to_js<T: Write>(
     code: &[Operation],
     debug_info: &DebugInfo,
 ) -> std::fmt::Result {
-    write!(writer, "var compiled = {{start: {}, commands: [", debug_info.start())?;
+    write!(
+        writer,
+        "var compiled = {{start: {}, commands: [",
+        debug_info.start()
+    )?;
     let mut iter = code.iter();
     if let Some(op) = iter.next() {
         write_operation_to_js(writer, op)?;
@@ -200,15 +210,15 @@ fn write_compiled_to_js<T: Write>(
     if let Some(i) = iter.next() {
         write!(
             writer,
-            "{{name: '{}', add: {}, pos: {}, id: {}, pair: {}}}",
-            i.name, i.add, i.pos, i.var_id, i.pair
+            "{{name: '{}', add: {}, pos: {}, id: {}, pair: {}, hode: {}}}",
+            i.name, i.add, i.pos, i.var_id, i.pair, i.hide
         )?;
     }
     for i in iter {
         write!(
             writer,
-            ", {{name: '{}', add: {}, pos: {}, id: {}, pair: {}}}",
-            i.name, i.add, i.pos, i.var_id, i.pair
+            ", {{name: '{}', add: {}, pos: {}, id: {}, pair: {}, hide: {}}}",
+            i.name, i.add, i.pos, i.var_id, i.pair, i.hide
         )?;
     }
     write!(writer, "]}}")?;

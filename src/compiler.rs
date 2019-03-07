@@ -286,7 +286,7 @@ pub struct DebugInfo {
 }
 
 #[derive(Debug)]
-/// Part of debug info responcible for determining variable visibility scopes
+/// Part of debug info responsible for determining variable visibility scopes
 pub struct VariableTransaction {
     /// position in code there transaction happened
     pub pos: usize,
@@ -298,6 +298,7 @@ pub struct VariableTransaction {
     pub add: bool,
     /// position of paired transaction (add for remove and visa versa)
     pub pair: usize,
+    pub hide: bool,
 }
 
 impl DebugInfo {
@@ -314,10 +315,10 @@ impl DebugInfo {
         }
     }
 
-    pub fn start(&self) -> usize{
+    pub fn start(&self) -> usize {
         let id = self.main_id.expect("Error: no main function present!");
-        for f in &self.functions{
-            if f.0 == id{
+        for f in &self.functions {
+            if f.0 == id {
                 return f.1;
             }
         }
@@ -373,6 +374,7 @@ impl DebugInfo {
         name: &'a TokenData<'a>,
         stack_offset: VariableHandleAddress,
         code_offset: usize,
+        hide: bool,
     ) {
         if let VariableHandleAddress::Local(_) = stack_offset {
             self.variables_transactions_stack
@@ -383,6 +385,7 @@ impl DebugInfo {
                 add: true,
                 var_id: self.variables_transactions_stack.len(),
                 pair: 0,
+                hide,
             });
         }
         self.reg_variable_offset(name, stack_offset);
@@ -395,12 +398,14 @@ impl DebugInfo {
             let var_id = self.variables_transactions[x].var_id;
             assert!(self.variables_transactions[x].add);
             self.variables_transactions[x].pair = self.variables_transactions.len();
+            let hide = self.variables_transactions[x].hide;
             self.variables_transactions.push(VariableTransaction {
                 pos: code_offset,
                 name,
                 add: false,
                 var_id,
                 pair: x,
+                hide,
             });
         }
     }
@@ -483,10 +488,10 @@ impl<'a> Compiler<'a> {
                 Root::FunctionDefinition(def) => {
                     match self.variables.register_function_definition(def) {
                         Ok(id) => {
-                            if def.decl.ret_name.name.token_str() == "main"{
+                            if def.decl.ret_name.name.token_str() == "main" {
                                 self.debug_info.main_id = Some(id);
                             }
-                        },
+                        }
                         Err(e) => {
                             self.errors.push(e);
                         }
@@ -518,7 +523,6 @@ impl<'a> Compiler<'a> {
             Err(self.errors)
         }
     }
-    
 
     /// compile single function
     pub fn compile_function(&mut self, func: &'a FunctionDefinition<'a>) -> Option<usize> {
@@ -547,7 +551,7 @@ impl<'a> Compiler<'a> {
                 match self.variables.register_variable(v.name, type_) {
                     Ok(x) => {
                         self.debug_info
-                            .push_variable(v.name, x, self.operations.len());
+                            .push_variable(v.name, x, self.operations.len(), false);
                         Ok(())
                     }
                     Err(x) => {
@@ -583,15 +587,16 @@ impl<'a> Compiler<'a> {
 
     fn compile_block(&mut self, block: &'a Block<'a>) -> Option<()> {
         let stack_frame = self.debug_info.make_stack_floor();
-        for s in &block.statements{
-            self.compile_statement(s)?;
+        for s in &block.statements {
+            dbg!(s);
+            self.compile_statement(&s.statement, &s.attrs)?;
         }
         self.debug_info
             .recover_to_stack_floor(self.operations.len(), stack_frame);
         Some(())
     }
 
-    fn compile_statement(&mut self, statement: &'a Statement<'a>) -> Option<()> {
+    fn compile_statement(&mut self, statement: &'a Statement<'a>, attrs: &[String]) -> Option<()> {
         match statement {
             Statement::Expression(e) => {
                 self.debug_info
@@ -608,7 +613,7 @@ impl<'a> Compiler<'a> {
             Statement::VariableDefinition(v) => {
                 self.debug_info
                     .reg_statement_offset(statement, self.operations.len());
-                self.compile_variable_definition(&v)
+                self.compile_variable_definition(&v, attrs)
             }
             Statement::ForLoop(l) => self.compile_for_loop(&l, statement),
             Statement::Condition(c) => {
@@ -644,7 +649,11 @@ impl<'a> Compiler<'a> {
         Some(())
     }
 
-    fn compile_variable_definition(&mut self, var: &'a VariableDefinition<'a>) -> Option<()> {
+    fn compile_variable_definition(
+        &mut self,
+        var: &'a VariableDefinition<'a>,
+        attrs: &[String],
+    ) -> Option<()> {
         let required_type = Type::from_type(&var.variable.type_)
             .or_else(|e| {
                 self.errors.push(Error::from_token(
@@ -659,8 +668,10 @@ impl<'a> Compiler<'a> {
             .register_variable(&var.variable.name, required_type.clone())
             .ok()?;
         self.compile_expression_of_type(&var.set_to, &required_type)?;
+        println!("{:?}", attrs);
+        let hide = attrs.iter().any(|s| dbg!(s.trim()) == "#[hide_var]");
         self.debug_info
-            .push_variable(var.name(), variable_address, self.operations.len());
+            .push_variable(var.name(), variable_address, self.operations.len(), hide);
         let from = self.take_latest_expr();
         match variable_address {
             VariableHandleAddress::Local(addr) => {
@@ -685,7 +696,9 @@ impl<'a> Compiler<'a> {
         let stack_floor = self.debug_info.make_stack_floor();
         self.variables.push_namespace();
         let succ = match &for_loop.init {
-            ForLoopInitialization::VariableDefinition(v) => self.compile_variable_definition(&v),
+            ForLoopInitialization::VariableDefinition(v) => {
+                self.compile_variable_definition(&v, &[])
+            }
             ForLoopInitialization::Expression(e) => {
                 let res = self.compile_expression(&e);
                 self.take_latest_expr();

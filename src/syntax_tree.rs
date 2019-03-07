@@ -48,7 +48,13 @@ pub enum TypeBase<'a> {
 
 #[derive(Debug)]
 pub struct Block<'a> {
-    pub statements: Vec<Statement<'a>>,
+    pub statements: Vec<StatementA<'a>>,
+}
+
+#[derive(Debug)]
+pub struct StatementA<'a>{
+    pub statement: Statement<'a>,
+    pub attrs: Vec<String>
 }
 
 #[derive(Debug)]
@@ -307,7 +313,7 @@ impl<'a> FunctionDefinition<'a> {
                 };
                 let call = Expression(Box::new(ExpressionData::FunctionCall(call)));
                 let block = Block{
-                    statements: vec![Statement::Expression(call)]
+                    statements: vec![StatementA{statement: Statement::Expression(call), attrs: vec![]}]
                 };
                 FunctionDefinition{
                     decl,
@@ -359,7 +365,14 @@ impl<'a> Parseable<'a> for Block<'a> {
     ) -> Option<Self> {
         let mut statements = vec![];
         while !walker.is_empty() {
-            statements.push(Statement::parse(walker, error_stream)?);
+            let statement = Statement::parse(walker, error_stream)?;
+            let mut attrs = vec![];
+            std::mem::swap(&mut attrs, &mut walker.attrs);
+
+            statements.push(StatementA{
+                statement,
+                attrs
+            });
         }
         Some(Block { statements })
     }
@@ -374,8 +387,10 @@ impl<'a> Block<'a> {
             Some(Block::parse(&mut body_walker, error_stream)?)
         } else {
             let statement = Statement::parse(walker, error_stream)?;
+            let mut attrs = vec![];
+            std::mem::swap(&mut attrs, &mut walker.attrs);
             Some(Block {
-                statements: vec![statement],
+                statements: vec![StatementA{statement, attrs}],
             })
         }
     }
@@ -1169,7 +1184,7 @@ mod tests {
         };
         check_var_expr!(cond, "a");
         let expr = match block.statements.as_slice() {
-            [Statement::Expression(v)] => v,
+            [StatementA{statement: Statement::Expression(v), ..}] => v,
             _ => panic!("Expected expression"),
         };
         check_var_expr!(expr, "b");
@@ -1186,13 +1201,13 @@ mod tests {
         };
         check_var_expr!(cond, "a");
         let expr = match block.statements.as_slice() {
-            [Statement::Expression(v)] => v,
+            [StatementA{statement: Statement::Expression(v), ..}] => v,
             _ => panic!("Expected expression"),
         };
         check_var_expr!(expr, "b");
         let else_block = else_block.unwrap();
         let expr = match else_block.statements.as_slice() {
-            [Statement::Expression(v)] => v,
+            [StatementA{statement:Statement::Expression(v), ..}] => v,
             _ => panic!("Expected expression"),
         };
         check_var_expr!(expr, "c");
@@ -1224,7 +1239,7 @@ mod tests {
         check_var_expr!(expr, "i");
 
         let expr = match block.statements.as_slice() {
-            [Statement::Expression(v)] => v,
+            [StatementA{statement: Statement::Expression(v), ..}] => v,
             _ => panic!("Expected expression"),
         };
         check_var_expr!(expr, "a");
@@ -1239,21 +1254,21 @@ mod tests {
 
         println!("{:?}", block);
 
-        let statement = block.statements.pop().unwrap();
+        let statement = block.statements.pop().unwrap().statement;
         let expr = match statement {
             Statement::Expression(v) => v,
             _ => panic!("Expected expression"),
         };
         check_var_expr!(expr, "c");
 
-        let statement = block.statements.pop().unwrap();
+        let statement = block.statements.pop().unwrap().statement;
         let expr = match statement {
             Statement::Expression(v) => v,
             _ => panic!("Expected expression"),
         };
         check_var_expr!(expr, "b");
 
-        let statement = block.statements.pop().unwrap();
+        let statement = block.statements.pop().unwrap().statement;
         let (init, condition, step, inner_block) = match statement {
             Statement::ForLoop(v) => (v.init, v.condition, v.step, v.body),
             _ => panic!("Expected for loop"),
@@ -1277,7 +1292,7 @@ mod tests {
         check_var_expr!(expr, "i");
 
         let expr = match inner_block.statements.as_slice() {
-            [Statement::Expression(v)] => v,
+            [StatementA{statement:Statement::Expression(v), ..}] => v,
             _ => panic!("Expected expression"),
         };
         check_var_expr!(expr, "a");

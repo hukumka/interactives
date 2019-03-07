@@ -51,6 +51,7 @@ pub enum TokenType {
     Operator,
     Bracket,
     Value,
+    Comment,
 }
 
 impl TokenType {
@@ -61,6 +62,7 @@ impl TokenType {
             TokenType::Operator => "Operator",
             TokenType::Bracket => "Bracket",
             TokenType::Value => "Value",
+            TokenType::Comment => "Comment",
         }
     }
 }
@@ -219,9 +221,24 @@ impl<'a> Preprocessor<'a> {
     /// # Panics
     /// panic if `char_iter` iterator is empty
     fn eat_operator(&self, char_iter: &mut CharsIter<'a>) -> Result<TokenData<'a>, Error<'a>> {
+        let first = char_iter.next().unwrap();
+        if let Some(c) = char_iter.peek().cloned() {
+            if c.1 == '/' && first.1 == '/' {
+                char_iter.next();
+                return Ok(TokenData::new(
+                    self.code_text,
+                    self.get_matching_range(char_iter, |x| x != '\n'),
+                    TokenType::Comment,
+                ));
+            }
+        }
+        let (a, b) = match char_iter.peek().cloned(){
+            Some((_, x)) if is_operator(x) => self.get_matching_range(char_iter, is_operator),
+            _ => (first.0 + 1, first.0 + 1),
+        };
         Ok(TokenData::new(
             self.code_text,
-            self.get_matching_range(char_iter, is_operator),
+            (a-1, b),
             TokenType::Operator,
         ))
     }

@@ -7,7 +7,7 @@ use syntax_tree::Return;
 use syntax_tree::{
     Block, Condition, Expression, ExpressionData, ForLoop, ForLoopInitialization,
     FunctionDeclaration, FunctionDefinition, Root, Statement, TreeItem, Type, TypeBase, Variable,
-    VariableDefinition,
+    VariableDefinition, StatementA,
 };
 
 pub struct Context<'a> {
@@ -468,6 +468,15 @@ impl<'a> PageElement<'a> for Block<'a> {
     }
 }
 
+impl<'a> PageElement<'a> for StatementA<'a> {
+    fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result {
+        for a in &self.attrs{
+            println!("attr[{:?}]", a);
+        }
+        self.statement.write_page(writer, context)
+    }
+}
+
 impl<'a> PageElement<'a> for Statement<'a> {
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result {
         let offset = context
@@ -547,7 +556,7 @@ impl<'a> PageElement<'a> for Condition<'a> {
         }
         let mut else_ = &self.else_;
         // if else is followed by single statement write "else if" block
-        while let [Statement::Condition(ref cond)] = if let Some(Block { statements: x }) = else_ {
+        while let [StatementA{statement: Statement::Condition(ref cond), ..}] = if let Some(Block { statements: x }) = else_ {
             x.as_slice()
         } else {
             &[]

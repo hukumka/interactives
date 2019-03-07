@@ -58,10 +58,12 @@ function initialize_vm_interface(functions){
         for(var i=0; i<vm.code.length; ++i){
             while(transaction_id < compiled.variable_transactions.length && compiled.variable_transactions[transaction_id].pos == i){
                 var t = compiled.variable_transactions[transaction_id]
-                if(t.add){
-                    stack = stack.push(t)
-                }else{
-                    stack = stack.pop()
+                if(!t.hide){
+                    if(t.add){
+                        stack = stack.push(t)
+                    }else{
+                        stack = stack.pop()
+                    }
                 }
                 transaction_id += 1;
             }
@@ -74,7 +76,7 @@ function initialize_vm_interface(functions){
 
         this.is_visible = function(ip, transaction){
             var pair = this.transactions[transaction].pair
-            return this.transactions[transaction].pos <= ip && ip < this.transactions[pair].pos
+            return this.transactions[transaction].pos <= ip && ip < this.transactions[pair].pos && !this.transactions[transaction].hide
         }
     }
 
