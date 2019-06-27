@@ -15,9 +15,9 @@ div.interface{
     grid-template-columns: 1fr auto auto 1fr;
     grid-template-rows: auto 1fr;
     grid-template-areas:
-        "left code controls right";
+        "left code controls right"
+        "left graph graph right";
     align-items: stretch;
-    min-height: 100%;
 }
 
 
@@ -32,7 +32,7 @@ div.code{
 
 div#graph{
     background-color: white;
-    grid-area: left;
+    grid-area: graph;
 }
 
 #asm_code{

@@ -588,7 +588,6 @@ impl<'a> Compiler<'a> {
     fn compile_block(&mut self, block: &'a Block<'a>) -> Option<()> {
         let stack_frame = self.debug_info.make_stack_floor();
         for s in &block.statements {
-            dbg!(s);
             self.compile_statement(&s.statement, &s.attrs)?;
         }
         self.debug_info
@@ -668,8 +667,7 @@ impl<'a> Compiler<'a> {
             .register_variable(&var.variable.name, required_type.clone())
             .ok()?;
         self.compile_expression_of_type(&var.set_to, &required_type)?;
-        println!("{:?}", attrs);
-        let hide = attrs.iter().any(|s| dbg!(s.trim()) == "#[hide_var]");
+        let hide = attrs.iter().any(|s| s.trim() == "#[hide_var]");
         self.debug_info
             .push_variable(var.name(), variable_address, self.operations.len(), hide);
         let from = self.take_latest_expr();

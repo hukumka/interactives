@@ -23,6 +23,12 @@
                 return Math.sqrt(x)
             }
         }
+        functions['input_steps'] = {
+            arg_count: 0,
+            func: function(x){
+                return parseInt(document.getElementById('input_steps').value, 10);
+            }
+        }
         functions['allocate_float'] = {
             arg_count: 1,
             func: "vm.alloc"
@@ -56,7 +62,7 @@
                     return;
                 }
                 var x = [];
-                var STEP = 0.01;
+                var STEP = 2.0 / parseInt(document.getElementById('input_steps').value, 10);
                 for(var i=0; i<graph_data.y.length; ++i){
                     x.push(i*STEP);
                 }
@@ -73,6 +79,9 @@
     </div>
     <div class="interface">
         <div id="controls">
+            <div>
+                <span style="color: white">Steps: </span><input type="text" id="input_steps"/>
+            </div>
             <div id="flow-control">
                 <a id="run">run</a><a id="step">step</a><a id="step-in">step-in</a>
             </div>

@@ -408,10 +408,12 @@ fn write_expression_brackets<'a, T: Write>(
 
 impl<'a> PageElement<'a> for FunctionDeclaration<'a> {
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result {
-        html!{writer, context,
-            div(class="function-declaration")[
-                call{|w, c| self.write_with_symbol(w, c, ";")}
-            ]
+        if !self.attrs.iter().any(|s| s.trim() == "#[hide]"){
+            html!{writer, context,
+                div(class="function-declaration")[
+                    call{|w, c| self.write_with_symbol(w, c, ";")}
+                ]
+            }
         }
         Ok(())
     }
@@ -470,8 +472,8 @@ impl<'a> PageElement<'a> for Block<'a> {
 
 impl<'a> PageElement<'a> for StatementA<'a> {
     fn write_page<T: Write>(&'a self, writer: &mut T, context: &mut Context<'a>) -> Result {
-        for a in &self.attrs{
-            println!("attr[{:?}]", a);
+        if self.attrs.iter().any(|s| s.trim() == "#[hide]"){
+            return Ok(());
         }
         self.statement.write_page(writer, context)
     }

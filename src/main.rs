@@ -91,9 +91,6 @@ fn main() {
         err.err_print_message(&line_starts);
         panic!("Execution aborted due to present error.")
     });
-    for t in &tokens {
-        println!("{:?}", t);
-    }
     // build syntax tree
     println!("Parse into AST.");
     let bracket_tree = BracketTree::new(&tokens).unwrap_or_else(|err| {

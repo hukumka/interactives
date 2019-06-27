@@ -20,6 +20,7 @@ pub struct FunctionDefinition<'a> {
 pub struct FunctionDeclaration<'a> {
     pub ret_name: Variable<'a>,
     pub arguments: Vec<Variable<'a>>,
+    pub attrs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -237,9 +238,12 @@ impl<'a> Parseable<'a> for Root<'a> {
                     | error_stream << ERROR_PARSING_ROOT_EXPECT_VARIABLE_OR_FUNCTION_DEFINITION
             )?;
             let args = FunctionDefinition::parse_arguments(&mut arg_walker, error_stream)?;
+            let mut attrs = vec![];
+            std::mem::swap(&mut attrs, &mut walker.attrs);
             let decl = FunctionDeclaration {
                 ret_name: var,
                 arguments: args,
+                attrs,
             };
             if walker.expect_exact_operator(";").is_some() {
                 Some(Root::FunctionDeclaration(decl))
@@ -306,6 +310,7 @@ impl<'a> FunctionDefinition<'a> {
                         name: &NAME_TOKEN,
                     },
                     arguments: vec![],
+                    attrs: vec![],
                 };
                 let call = FunctionCall{
                     func: Expression(Box::new(ExpressionData::Variable(&CALL_TOKEN))),
